@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "875629801749",
+    "project_id": "portable-health-kits-f1986",
+    "storage_bucket": "portable-health-kits-f1986.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:875629801749:android:3d7fb71a259e9663bdf91c",
+        "android_client_info": {
+          "package_name": "com.example.portable_health_kit"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB-zV1Cka9giZUG7vRCwN9VBctGDpFiXX8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
