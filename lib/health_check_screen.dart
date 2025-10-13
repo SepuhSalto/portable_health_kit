@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'personal_data_input_screen.dart'; // New import
-import 'blood_pressure_input_screen.dart';
-import 'blood_sugar_input_screen.dart';
+import 'package:portable_health_kit/personal_data_input_screen.dart';
+import 'package:portable_health_kit/blood_pressure_input_screen.dart';
+import 'package:portable_health_kit/blood_sugar_input_screen.dart';
 
 class HealthCheckScreen extends StatelessWidget {
   const HealthCheckScreen({super.key});
@@ -23,9 +23,11 @@ class HealthCheckScreen extends StatelessWidget {
               _buildMenuButton(
                 context,
                 icon: Icons.person_outline,
-                label: 'Input Data Diri',
+                // The label is now "Edit Data Diri"
+                label: 'Edit Data Diri',
                 onPressed: () {
-                   Navigator.push(context, MaterialPageRoute(builder: (context) => const PersonalDataInputScreen()));
+                  // It now navigates to the same screen, which will auto-load data
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PersonalDataInputScreen()));
                 },
               ),
               const SizedBox(height: 20),

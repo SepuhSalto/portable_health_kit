@@ -5,7 +5,8 @@ class Alarm {
   String title;
   TimeOfDay time;
   bool isActive;
-  List<bool> repeatDays; // Corresponds to Mon, Tue, Wed, Thu, Fri, Sat, Sun
+  List<bool> repeatDays;
+  final bool isFixed; // This new property marks the default alarms
 
   Alarm({
     required this.id,
@@ -13,5 +14,6 @@ class Alarm {
     required this.time,
     this.isActive = true,
     required this.repeatDays,
+    this.isFixed = false, // Custom alarms are not fixed by default
   });
 }

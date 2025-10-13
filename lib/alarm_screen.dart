@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'models/alarm_models.dart';
-import 'add_edit_alarm_screen.dart';
+import 'package:portable_health_kit/models/alarm_models.dart';
+import 'package:portable_health_kit/add_edit_alarm_screen.dart';
+import 'package:audioplayers/audioplayers.dart'; // 1. Import the new package
 
 class AlarmScreen extends StatefulWidget {
   const AlarmScreen({super.key});
@@ -10,17 +11,23 @@ class AlarmScreen extends StatefulWidget {
 }
 
 class _AlarmScreenState extends State<AlarmScreen> {
-  // Mock data for demonstration. Later, this will come from Firestore.
+  // 2. Create an instance of the audio player
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   final List<Alarm> _alarms = [
-    Alarm(id: '1', title: 'Minum Obat Hipertensi', time: const TimeOfDay(hour: 9, minute: 0), repeatDays: List.filled(7, true)),
-    Alarm(id: '2', title: 'Senam Kaki Diabetes', time: const TimeOfDay(hour: 17, minute: 0), repeatDays: [true, false, true, false, true, false, false], isActive: false),
-    Alarm(id: '3', title: 'Cek Gula Darah', time: const TimeOfDay(hour: 20, minute: 0), repeatDays: [true, true, true, true, true, true, true]),
+    Alarm(id: 'fixed_1', title: 'Minum Obat', time: const TimeOfDay(hour: 9, minute: 0), repeatDays: List.filled(7, true), isFixed: true),
+    Alarm(id: 'fixed_2', title: 'Senam Kaki', time: const TimeOfDay(hour: 17, minute: 0), repeatDays: [true, false, true, false, true, false, false], isFixed: true),
+    Alarm(id: 'custom_1', title: 'Cek Gula Darah', time: const TimeOfDay(hour: 20, minute: 0), repeatDays: List.filled(7, true)),
   ];
+
+  // 3. Create a function to play a sound from your assets
+  Future<void> _playSound(String soundAsset) async {
+    await _audioPlayer.play(AssetSource(soundAsset));
+  }
 
   String _getRepeatDaysString(List<bool> days) {
     if (days.every((day) => day)) return 'Setiap Hari';
     if (days.every((day) => !day)) return 'Tidak Diulang';
-
     const dayNames = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
     final selectedDays = <String>[];
     for (int i = 0; i < days.length; i++) {
@@ -29,6 +36,21 @@ class _AlarmScreenState extends State<AlarmScreen> {
       }
     }
     return selectedDays.join(', ');
+  }
+
+  void _deleteAlarm(String id) {
+    setState(() {
+      _alarms.removeWhere((alarm) => alarm.id == id);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Alarm berhasil dihapus.'), backgroundColor: Colors.green),
+    );
+  }
+  
+  @override
+  void dispose() {
+    _audioPlayer.dispose(); // Clean up the audio player when the screen is closed
+    super.dispose();
   }
 
   @override
@@ -52,12 +74,24 @@ class _AlarmScreenState extends State<AlarmScreen> {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // 4. Add a "play" button ONLY for the fixed alarms
+                  if (alarm.isFixed)
+                    IconButton(
+                      icon: Icon(Icons.volume_up_outlined, color: Theme.of(context).primaryColor),
+                      onPressed: () {
+                        // Determine which sound to play based on the alarm title
+                        if (alarm.title == 'Minum Obat') {
+                          _playSound('sounds/Waktunya Minum Obat.wav');
+                        } else if (alarm.title == 'Senam Kaki') {
+                          _playSound('sounds/Lakukan Senam Kaki.wav');
+                        }
+                      },
+                    ),
                   Switch(
                     value: alarm.isActive,
                     onChanged: (bool value) {
                       setState(() {
                         alarm.isActive = value;
-                        // TODO: Save updated alarm state to Firestore
                       });
                     },
                     activeColor: Theme.of(context).primaryColor,
@@ -68,6 +102,11 @@ class _AlarmScreenState extends State<AlarmScreen> {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditAlarmScreen(alarmToEdit: alarm)));
                     },
                   ),
+                  if (!alarm.isFixed)
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: Colors.red[700]),
+                      onPressed: () => _deleteAlarm(alarm.id),
+                    ),
                 ],
               ),
             ),

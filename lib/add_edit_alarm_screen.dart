@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'models/alarm_models.dart';
+import 'package:portable_health_kit/models/alarm_models.dart';
 
 class AddEditAlarmScreen extends StatefulWidget {
   final Alarm? alarmToEdit;
@@ -14,6 +14,7 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
   final _titleController = TextEditingController();
   TimeOfDay _selectedTime = TimeOfDay.now();
   List<bool> _repeatDays = List.filled(7, false);
+  bool _isFixed = false; // To check if we are editing a fixed alarm
 
   @override
   void initState() {
@@ -22,6 +23,7 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
       _titleController.text = widget.alarmToEdit!.title;
       _selectedTime = widget.alarmToEdit!.time;
       _repeatDays = widget.alarmToEdit!.repeatDays;
+      _isFixed = widget.alarmToEdit!.isFixed;
     }
   }
 
@@ -66,9 +68,13 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _titleController,
-              decoration: const InputDecoration(
+              // Disable the text field if the alarm is fixed
+              enabled: !_isFixed,
+              decoration: InputDecoration(
                 hintText: 'e.g., Minum Obat Pagi',
-                prefixIcon: Icon(Icons.label_outline),
+                prefixIcon: const Icon(Icons.label_outline),
+                // Visually indicate that it's disabled
+                fillColor: _isFixed ? Colors.grey[200] : Colors.white,
               ),
             ),
             const SizedBox(height: 24),
