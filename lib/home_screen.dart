@@ -1,13 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:portable_health_kit/add_edit_alarm_screen.dart';
-import 'package:portable_health_kit/health_check_screen.dart';
+import 'package:portable_health_kit/patient_selection_screen.dart';
 import 'package:portable_health_kit/services/firestore_service.dart';
-import 'package:portable_health_kit/services/user_session_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  // NEW: Callback function from MainNavigationScreen
+  final Function(int) onNavigateToInput;
+
+  const HomeScreen({super.key, required this.onNavigateToInput});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -15,23 +16,53 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  final UserSessionService _sessionService = UserSessionService();
+  
+  // NEW: State variables to hold the selected patient
+  String? _selectedPatientId;
+  String? _selectedPatientName;
+
+  // NEW: Function to open the patient selection screen
+  Future<void> _selectPatient() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PatientSelectionScreen(
+          // We don't need a specific action, just selection
+          action: PatientAction.viewHistory,
+        ),
+      ),
+    );
+
+    if (result != null && result is Map<String, dynamic>) {
+      setState(() {
+        _selectedPatientId = result['id'];
+        _selectedPatientName = result['name'];
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final String? currentUserId = _sessionService.currentUserId;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Beranda'),
+        // NEW: Title changes based on selected patient
+        title: Text(_selectedPatientName == null ? 'Beranda' : 'Beranda: $_selectedPatientName'),
         automaticallyImplyLeading: false,
+        actions: [
+          // NEW: Button to select a patient
+          IconButton(
+            icon: const Icon(Icons.person_search_outlined),
+            tooltip: 'Pilih Pasien',
+            onPressed: _selectPatient,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Welcome Card ---
+            // --- Welcome Card (Unchanged) ---
             Card(
               clipBehavior: Clip.antiAlias,
               child: Container(
@@ -63,12 +94,20 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 24),
 
-            // --- Live Data Section ---
-            if (currentUserId == null)
-              const Center(child: Text('Error: User ID tidak ditemukan.'))
+            // --- Live Data Section (HEAVILY MODIFIED) ---
+            if (_selectedPatientId == null)
+              // Show this if no patient is selected
+              _buildAddDataCard(
+                context,
+                title: 'Silakan Pilih Pasien',
+                description: 'Pilih pasien menggunakan tombol di kanan atas untuk melihat data kesehatan terbaru.',
+                isPatientSelection: true,
+              )
             else
+              // Show this once a patient is selected
               StreamBuilder<QuerySnapshot>(
-                stream: _firestoreService.getRecentReadingsStream(currentUserId),
+                // NEW: Use the new Firestore service function
+                stream: _firestoreService.getPatientRecentReadingsStream(_selectedPatientId!),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -77,44 +116,38 @@ class _HomeScreenState extends State<HomeScreen> {
                     return _buildAddDataCard(
                       context,
                       title: 'Data Kesehatan Belum Ada',
-                      description: 'Input data kesehatan Anda untuk melihat hasilnya di sini.',
+                      description: 'Input data kesehatan untuk pasien ini untuk melihat hasilnya di sini.',
                     );
                   }
 
                   final readings = snapshot.data!.docs;
                   
-                  // Find the latest BP and BS readings from the list in Dart code
                   QueryDocumentSnapshot<Object?>? latestBpReading;
                   QueryDocumentSnapshot<Object?>? latestBsReading;
                   
                   try {
                     latestBpReading = readings.firstWhere((doc) => (doc.data() as Map<String, dynamic>)['SystolicValue'] != null);
-                  } catch (e) {
-                    latestBpReading = null;
-                  }
+                  } catch (e) { latestBpReading = null; }
                   
                   try {
                     latestBsReading = readings.firstWhere((doc) => (doc.data() as Map<String, dynamic>)['BloodSugarValue'] != null);
-                  } catch (e) {
-                    latestBsReading = null;
-                  }
+                  } catch (e) { latestBsReading = null; }
 
                   return Column(
                     children: [
                       if (latestBpReading != null)
                         _buildBloodPressureCard(context, latestBpReading.data() as Map<String, dynamic>)
                       else
-                        _buildAddDataCard(context, title: 'Tekanan Darah Belum Diinput', description: 'Input data tekanan darah Anda untuk melihat hasilnya di sini.'),
+                        _buildAddDataCard(context, title: 'Tekanan Darah Belum Diinput', description: 'Input data tekanan darah untuk pasien ini.'),
                       
                       const SizedBox(height: 16),
                       
-                      // CARD 2: Latest Blood Sugar
                       if (latestBsReading != null)
                         _buildBloodSugarCard(context, latestBsReading.data() as Map<String, dynamic>)
                       else
-                        _buildAddDataCard(context, title: 'Gula Darah Belum Diinput', description: 'Input data gula darah Anda untuk melihat hasilnya di sini.'),
+                        _buildAddDataCard(context, title: 'Gula Darah Belum Diinput', description: 'Input data gula darah untuk pasien ini.'),
                     ],
-                  );
+  );
                 },
               ),
           ],
@@ -123,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Card Widgets ---
+  // --- Card Widgets (MODIFIED) ---
   Widget _buildBloodPressureCard(BuildContext context, Map<String, dynamic> data) {
     final timestamp = (data['Timestamp'] as Timestamp).toDate();
     final int systolic = data['SystolicValue'];
@@ -131,22 +164,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final category = _getBloodPressureCategory(systolic, diastolic);
 
     return Card(
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 50),
-            child: Column(
-              children: [
-                _buildCardHeader(context, timestamp),
-                const Divider(height: 24),
-                _HealthMetric(value: '$systolic/$diastolic', unit: 'mmHg', label: 'Tekanan Darah'),
-                const SizedBox(height: 16),
-                _buildStatusChip(category, _getBloodPressureColor(category)),
-              ],
-            ),
-          ),
-          _buildAlarmButton(context),
-        ],
+      // REMOVED: The Stack widget
+      child: Padding(
+        // MODIFIED: Padding is simpler
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildCardHeader(context, timestamp),
+            const Divider(height: 24),
+            _HealthMetric(value: '$systolic/$diastolic', unit: 'mmHg', label: 'Tekanan Darah'),
+            const SizedBox(height: 16),
+            _buildStatusChip(category, _getBloodPressureColor(category)),
+          ],
+        ),
       ),
     );
   }
@@ -157,28 +187,26 @@ class _HomeScreenState extends State<HomeScreen> {
     final category = _getBloodSugarCategory(bloodSugar);
 
     return Card(
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 50),
-            child: Column(
-              children: [
-                _buildCardHeader(context, timestamp),
-                const Divider(height: 24),
-                _HealthMetric(value: bloodSugar.toString(), unit: 'mg/dL', label: 'Gula Darah'),
-                const SizedBox(height: 16),
-                _buildStatusChip(category, _getBloodSugarColor(category)),
-              ],
-            ),
-          ),
-          _buildAlarmButton(context),
-        ],
+      // REMOVED: The Stack widget
+      child: Padding(
+        // MODIFIED: Padding is simpler
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildCardHeader(context, timestamp),
+            const Divider(height: 24),
+            _HealthMetric(value: bloodSugar.toString(), unit: 'mg/dL', label: 'Gula Darah'),
+            const SizedBox(height: 16),
+            _buildStatusChip(category, _getBloodSugarColor(category)),
+          ],
+        ),
       ),
     );
   }
 
   // --- Helper Widgets ---
   Widget _buildCardHeader(BuildContext context, DateTime timestamp) {
+    // ... (Unchanged) ...
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -188,33 +216,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Positioned _buildAlarmButton(BuildContext context) {
-    return Positioned(
-      bottom: 10,
-      right: 10,
-      child: ActionChip(
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const AddEditAlarmScreen()));
-        },
-        avatar: Icon(Icons.add_alarm_outlined, size: 16, color: Theme.of(context).primaryColor),
-        label: Text('Tambah Alarm', style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold, fontSize: 12)),
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.3)),
-        ),
-      ),
-    );
-  }
+  // REMOVED: _buildAlarmButton widget
 
-  Widget _buildAddDataCard(BuildContext context, {required String title, required String description}) {
+  Widget _buildAddDataCard(BuildContext context, {required String title, required String description, bool isPatientSelection = false}) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            Icon(Icons.add_chart_outlined, size: 40, color: Colors.grey[400]),
+            Icon(
+              isPatientSelection ? Icons.person_search_outlined : Icons.add_chart_outlined,
+              size: 40,
+              color: Colors.grey[400]
+            ),
             const SizedBox(height: 16),
             Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
@@ -222,9 +236,15 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const HealthCheckScreen()));
+                // NEW: Use the correct callback
+                if (isPatientSelection) {
+                  _selectPatient();
+                } else {
+                  widget.onNavigateToInput(1); // Go to "Input Data" tab
+                }
               },
-              child: const Text('Input Data Sekarang'),
+              // NEW: Change button text based on context
+              child: Text(isPatientSelection ? 'Pilih Pasien' : 'Input Data Sekarang'),
             )
           ],
         ),
@@ -233,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatusChip(String label, Color color) {
+    // ... (Unchanged) ...
     return Chip(
       label: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
       backgroundColor: color,
@@ -241,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Category Logic ---
+  // --- Category Logic (Unchanged) ---
   String _getBloodPressureCategory(int systolic, int diastolic) {
     if (systolic >= 140 || diastolic >= 90) return 'Hipertensi Derajat 2';
     if (systolic >= 130 || diastolic >= 80) return 'Hipertensi Derajat 1';
@@ -271,6 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HealthMetric extends StatelessWidget {
+  // ... (Unchanged) ...
   final String value;
   final String unit;
   final String label;

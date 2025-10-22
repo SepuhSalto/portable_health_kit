@@ -15,14 +15,22 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
 
-  // The list of pages that the navigation bar will switch between
-  static const List<Widget> _widgetOptions = <Widget>[
-    HomeScreen(),
-    HealthCheckScreen(),
-    HistoryScreen(),
-    AlarmScreen(),
-    TipsScreen(),
-  ];
+  // We need to make this stateful to pass the callback
+  late final List<Widget> _widgetOptions;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize the list here, passing the _onItemTapped function to HomeScreen
+    _widgetOptions = <Widget>[
+      // MODIFICATION: Pass the navigation callback to HomeScreen
+      HomeScreen(onNavigateToInput: _onItemTapped),
+      HealthCheckScreen(),
+      HistoryScreen(),
+      AlarmScreen(),
+      TipsScreen(),
+    ];
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -34,6 +42,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
+        // Use the stateful widget list
         child: _widgetOptions.elementAt(_selectedIndex),
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -62,8 +71,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         currentIndex: _selectedIndex,
         selectedItemColor: Theme.of(context).primaryColor,
         unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true, // Ensures all labels are visible
-        type: BottomNavigationBarType.fixed, // Good for 5 items
+        showUnselectedLabels: true,
+        type: BottomNavigationBarType.fixed,
         onTap: _onItemTapped,
       ),
     );
