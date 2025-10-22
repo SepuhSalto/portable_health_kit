@@ -47,6 +47,36 @@ class _AlarmScreenState extends State<AlarmScreen> {
     );
   }
   
+  Future<void> _editAlarm(Alarm alarm) async {
+    final Alarm? updatedAlarm = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => AddEditAlarmScreen(alarmToEdit: alarm)),
+    );
+
+    if (updatedAlarm != null && mounted) {
+      setState(() {
+        final index = _alarms.indexWhere((a) => a.id == updatedAlarm.id);
+        if (index != -1) {
+          _alarms[index] = updatedAlarm;
+        }
+      });
+    }
+  }
+
+  Future<void> _addAlarm() async {
+    final Alarm? newAlarm = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AddEditAlarmScreen()),
+    );
+
+    if (newAlarm != null && mounted) {
+      setState(() {
+        _alarms.add(newAlarm);
+      });
+    }
+  }
+
+
   @override
   void dispose() {
     _audioPlayer.dispose(); // Clean up the audio player when the screen is closed
@@ -61,7 +91,7 @@ class _AlarmScreenState extends State<AlarmScreen> {
         automaticallyImplyLeading: false,
       ),
       body: ListView.builder(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Added bottom padding
         itemCount: _alarms.length,
         itemBuilder: (context, index) {
           final alarm = _alarms[index];
@@ -74,12 +104,10 @@ class _AlarmScreenState extends State<AlarmScreen> {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 4. Add a "play" button ONLY for the fixed alarms
                   if (alarm.isFixed)
                     IconButton(
                       icon: Icon(Icons.volume_up_outlined, color: Theme.of(context).primaryColor),
                       onPressed: () {
-                        // Determine which sound to play based on the alarm title
                         if (alarm.title == 'Minum Obat') {
                           _playSound('sounds/Waktunya Minum Obat.wav');
                         } else if (alarm.title == 'Senam Kaki') {
@@ -98,9 +126,8 @@ class _AlarmScreenState extends State<AlarmScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.edit_outlined),
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditAlarmScreen(alarmToEdit: alarm)));
-                    },
+                    // Use the new _editAlarm function
+                    onPressed: () => _editAlarm(alarm),
                   ),
                   if (!alarm.isFixed)
                     IconButton(
@@ -114,9 +141,8 @@ class _AlarmScreenState extends State<AlarmScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const AddEditAlarmScreen()));
-        },
+        // Use the new _addAlarm function
+        onPressed: _addAlarm,
         backgroundColor: Theme.of(context).primaryColor,
         child: const Icon(Icons.add, color: Colors.white),
       ),

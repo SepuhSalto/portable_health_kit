@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:portable_health_kit/main_navigation_screen.dart';
+// import 'package:portable_health_kit/main_navigation_screen.dart'; // No longer needed
 import 'package:portable_health_kit/services/firestore_service.dart';
 import 'package:portable_health_kit/services/user_session_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class PersonalDataInputScreen extends StatefulWidget {
-  // This flag tells the screen if it's the very first time the app is run
-  final bool isInitialSetup;
-
-  const PersonalDataInputScreen({super.key, this.isInitialSetup = false});
+  // This screen is now ONLY for registering new patients
+  // We can remove the isInitialSetup flag
+  const PersonalDataInputScreen({super.key});
 
   @override
   State<PersonalDataInputScreen> createState() => _PersonalDataInputScreenState();
@@ -21,101 +19,63 @@ class _PersonalDataInputScreenState extends State<PersonalDataInputScreen> {
   final _nameController = TextEditingController();
   final _ageController = TextEditingController();
   final _addressController = TextEditingController();
+  // NEW: Controller for phone number
+  final _phoneController = TextEditingController();
+
   String? _selectedGender;
   bool _isLoading = false;
-  bool _isEditMode = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    final userId = _sessionService.currentUserId;
-    if (userId != null) {
-      setState(() {
-        _isEditMode = true;
-      });
-      final userData = await _firestoreService.getUser(userId);
-      if (userData != null && mounted) {
-        _nameController.text = userData['Name'] ?? '';
-        _ageController.text = userData['Age']?.toString() ?? '';
-        _addressController.text = userData['Address'] ?? '';
-        setState(() {
-          _selectedGender = userData['Gender'];
-        });
-      }
-    }
-  }
 
   @override
   void dispose() {
     _nameController.dispose();
     _ageController.dispose();
     _addressController.dispose();
+    // NEW: Dispose the phone controller
+    _phoneController.dispose(); 
     super.dispose();
   }
 
   Future<void> _saveData() async {
-    if (_nameController.text.isEmpty || _ageController.text.isEmpty || _selectedGender == null) {
+    if (_nameController.text.isEmpty || _ageController.text.isEmpty || _phoneController.text.isEmpty || _selectedGender == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mohon lengkapi semua data yang diperlukan.'), backgroundColor: Colors.red),
+        const SnackBar(content: Text('Mohon lengkapi semua data (Nama, Umur, HP, Jenis Kelamin).'), backgroundColor: Colors.red),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() { _isLoading = true; });
 
-    final userData = {
+    final patientData = {
       'Name': _nameController.text,
       'Age': int.tryParse(_ageController.text) ?? 0,
       'Gender': _selectedGender,
       'Address': _addressController.text,
+      'Phone': _phoneController.text,
+      'createdAt': Timestamp.now(),
+      // NEW: Link this patient to the health worker who registered them
+      'registeredByUserId': _sessionService.currentUserId,
     };
 
     try {
-      if (_isEditMode) {
-        // UPDATE existing user
-        await _firestoreService.updateUser(_sessionService.currentUserId!, userData);
-      } else {
-        // CREATE new user
-        userData['createdAt'] = Timestamp.now();
-        final newUserId = await _firestoreService.addUser(userData);
-        _sessionService.setCurrentUserId(newUserId);
-        // Save the user ID to the device for future app launches
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userId', newUserId);
-      }
+      // NEW: Use the addPatient function
+      await _firestoreService.addPatient(patientData);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Data berhasil ${_isEditMode ? 'diperbarui' : 'disimpan'}!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Pasien baru berhasil didaftarkan!'), backgroundColor: Colors.green),
         );
-
-        if (widget.isInitialSetup) {
-          // If this was the first setup, go to the main app dashboard
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
-          );
-        } else {
-          // Otherwise, just go back to the previous screen
-          Navigator.of(context).pop();
-        }
+        // Just go back to the previous screen
+        Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menyimpan data: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Gagal mendaftarkan pasien: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() { _isLoading = false; });
       }
     }
   }
@@ -124,11 +84,12 @@ class _PersonalDataInputScreenState extends State<PersonalDataInputScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditMode ? 'Edit Data Diri' : 'Input Data Diri'),
-        // Prevent going back during the initial, mandatory setup
-        automaticallyImplyLeading: !widget.isInitialSetup,
+        // Title is now fixed
+        title: const Text('Register Pasien Baru'), 
+        automaticallyImplyLeading: true, // User can always go back
       ),
       body: SingleChildScrollView(
+        // ... (The Column and all _buildTextField widgets are the same as before) ...
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -136,6 +97,8 @@ class _PersonalDataInputScreenState extends State<PersonalDataInputScreen> {
             _buildTextField(controller: _nameController, label: 'Nama Lengkap', icon: Icons.person_outline),
             const SizedBox(height: 20),
             _buildTextField(controller: _ageController, label: 'Umur', icon: Icons.cake_outlined, keyboardType: TextInputType.number),
+            const SizedBox(height: 20),
+            _buildTextField(controller: _phoneController, label: 'Nomor HP', icon: Icons.phone_outlined, keyboardType: TextInputType.phone),
             const SizedBox(height: 20),
             _buildGenderDropdown(),
             const SizedBox(height: 20),
@@ -145,7 +108,7 @@ class _PersonalDataInputScreenState extends State<PersonalDataInputScreen> {
               onPressed: _isLoading ? null : _saveData,
               child: _isLoading
                   ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(_isEditMode ? 'Perbarui Data' : 'Simpan Data'),
+                  : const Text('Simpan Pasien'), // Updated button text
             ),
           ],
         ),
@@ -165,6 +128,7 @@ class _PersonalDataInputScreenState extends State<PersonalDataInputScreen> {
           maxLines: maxLines,
           decoration: InputDecoration(
             prefixIcon: Icon(icon),
+            hintText: label,
           ),
         ),
       ],
@@ -175,7 +139,7 @@ class _PersonalDataInputScreenState extends State<PersonalDataInputScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Jenis Kelamin', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const Text('Jenis Kelamin', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: _selectedGender,

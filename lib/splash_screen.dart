@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:portable_health_kit/main_navigation_screen.dart';
 import 'package:portable_health_kit/services/user_session_service.dart';
-import 'package:portable_health_kit/welcome_screen.dart'; // Import the new welcome screen
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,33 +13,29 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkUserStatus();
+    _logInHealthWorker();
   }
 
-  Future<void> _checkUserStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('userId');
+  Future<void> _logInHealthWorker() async {
+    // This assumes the app is only for the health worker
+    // and they don't need to log in or register.
+    
+    // We set a single, hard-coded ID for the entire "kiosk"
+    UserSessionService().setCurrentUserId("clinic_bali_sehat_01");
 
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
-      if (userId != null && userId.isNotEmpty) {
-        // User is already registered, go to the main dashboard
-        UserSessionService().setCurrentUserId(userId);
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
-        );
-      } else {
-        // THIS IS THE CHANGE: Go to the Welcome Screen for new users
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-        );
-      }
+      // Always go directly to the main app
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // ... (build method is unchanged) ...
     return Scaffold(
       backgroundColor: Theme.of(context).primaryColor,
       body: const Center(

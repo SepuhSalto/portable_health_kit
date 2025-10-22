@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:portable_health_kit/services/firestore_service.dart';
-import 'package:portable_health_kit/services/user_session_service.dart';
 
 class BloodPressureInputScreen extends StatefulWidget {
-  const BloodPressureInputScreen({super.key});
+  // NEW: Add patientId and patientName
+  final String patientId;
+  final String patientName;
+
+  const BloodPressureInputScreen({
+    super.key, 
+    required this.patientId, 
+    required this.patientName
+  });
+
   @override
   State<BloodPressureInputScreen> createState() => _BloodPressureInputScreenState();
 }
 
 class _BloodPressureInputScreenState extends State<BloodPressureInputScreen> {
   final _firestoreService = FirestoreService();
-  final _sessionService = UserSessionService();
   final _systolicController = TextEditingController();
   final _diastolicController = TextEditingController();
   bool _isLoading = false;
@@ -28,22 +35,23 @@ class _BloodPressureInputScreenState extends State<BloodPressureInputScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mohon isi nilai sistolik dan diastolik.'), backgroundColor: Colors.red));
       return;
     }
-    final currentUserId = _sessionService.currentUserId;
-    if (currentUserId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tidak ada pengguna aktif.'), backgroundColor: Colors.red));
-      return;
-    }
+    
+    // We no longer need the health worker's ID here
+    // final currentUserId = _sessionService.currentUserId;
+
     setState(() { _isLoading = true; });
 
     final readingData = {
       'SystolicValue': int.tryParse(_systolicController.text) ?? 0,
       'DiastolicValue': int.tryParse(_diastolicController.text) ?? 0,
-      'BloodSugarValue': null, // This line is crucial
+      'BloodSugarValue': null,
       'Timestamp': Timestamp.now(),
     };
 
     try {
-      await _firestoreService.addHealthReading(currentUserId, readingData);
+      // NEW: Use the new service function with the patientId
+      await _firestoreService.addHealthReadingToPatient(widget.patientId, readingData);
+
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data tekanan darah berhasil disimpan!'), backgroundColor: Colors.green));
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
@@ -56,8 +64,10 @@ class _BloodPressureInputScreenState extends State<BloodPressureInputScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Input Tekanan Darah')),
+      // NEW: Show which patient we are inputting for
+      appBar: AppBar(title: Text('Input TD for ${widget.patientName}')),
       body: SingleChildScrollView(
+        // ... (Rest of build method is unchanged) ...
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

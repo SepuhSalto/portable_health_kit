@@ -34,6 +34,9 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
   }
 
   Future<void> _selectTime(BuildContext context) async {
+    // Disable time picking if the alarm is fixed
+    if (_isFixed) return; 
+
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
@@ -46,11 +49,32 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
   }
 
   void _saveAlarm() {
-    // TODO: Implement save/update logic with Firestore
-    print('Title: ${_titleController.text}');
-    print('Time: ${_selectedTime.format(context)}');
-    print('Repeat Days: $_repeatDays');
-    Navigator.of(context).pop();
+    final title = _titleController.text;
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Judul tidak boleh kosong.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    if (widget.alarmToEdit != null) {
+      // Editing existing alarm
+      widget.alarmToEdit!.title = title;
+      widget.alarmToEdit!.time = _selectedTime;
+      widget.alarmToEdit!.repeatDays = _repeatDays;
+      Navigator.of(context).pop(widget.alarmToEdit);
+    } else {
+      // Creating new alarm
+      final newAlarm = Alarm(
+        // Use a simple unique ID for local alarms
+        id: 'custom_${DateTime.now().millisecondsSinceEpoch}', 
+        title: title,
+        time: _selectedTime,
+        repeatDays: _repeatDays,
+        isActive: true, // New alarms are active by default
+      );
+      Navigator.of(context).pop(newAlarm);
+    }
   }
 
   @override
@@ -68,13 +92,12 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _titleController,
-              // Disable the text field if the alarm is fixed
               enabled: !_isFixed,
               decoration: InputDecoration(
                 hintText: 'e.g., Minum Obat Pagi',
                 prefixIcon: const Icon(Icons.label_outline),
-                // Visually indicate that it's disabled
                 fillColor: _isFixed ? Colors.grey[200] : Colors.white,
+                filled: true, // Make sure the fill color is applied
               ),
             ),
             const SizedBox(height: 24),
@@ -84,6 +107,7 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
               child: ListTile(
                 leading: const Icon(Icons.access_time),
                 title: Text(_selectedTime.format(context), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                trailing: _isFixed ? Icon(Icons.lock, color: Colors.grey[600]) : null,
                 onTap: () => _selectTime(context),
               ),
             ),
@@ -93,8 +117,9 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
             _buildRepeatDaysSelector(),
             const SizedBox(height: 40),
             ElevatedButton(
-              onPressed: _saveAlarm,
-              child: const Text('Simpan Alarm'),
+              // Disable save button for fixed alarms
+              onPressed: _isFixed ? null : _saveAlarm,
+              child: Text(_isFixed ? 'Alarm Tetap (Tidak Bisa Disimpan)' : 'Simpan Alarm'),
             ),
           ],
         ),
@@ -109,6 +134,8 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
       children: List.generate(7, (index) {
         return GestureDetector(
           onTap: () {
+            // Disable day picking if the alarm is fixed
+            if (_isFixed) return; 
             setState(() {
               _repeatDays[index] = !_repeatDays[index];
             });
