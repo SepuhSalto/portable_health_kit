@@ -4,6 +4,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:portable_health_kit/services/firestore_service.dart';
 
+// NEW: Enum to manage the time filter state
+enum TimeFilter { all, day, week, month }
+
 class PatientHistoryDetailScreen extends StatefulWidget {
   final String patientId;
   final String patientName;
@@ -23,12 +26,15 @@ class _PatientHistoryDetailScreenState
     extends State<PatientHistoryDetailScreen> {
   final FirestoreService _firestoreService = FirestoreService();
 
-  // NEW: State for graph toggles
+  // State for graph toggles (unchanged)
   bool _showSystolic = true;
   bool _showDiastolic = true;
   bool _showBloodSugar = true;
 
-  // --- Category Helper Functions (from old history screen) ---
+  // NEW: State for time filter
+  TimeFilter _selectedFilter = TimeFilter.all;
+
+  // --- Category Helper Functions (Unchanged) ---
   String _getBloodPressureCategory(int systolic, int diastolic) {
     if (systolic >= 140 || diastolic >= 90) return 'Hipertensi Derajat 2';
     if (systolic >= 130 || diastolic >= 80) return 'Hipertensi Derajat 1';
@@ -57,6 +63,42 @@ class _PatientHistoryDetailScreenState
   }
   // --- End Helper Functions ---
 
+  // NEW: Helper to get the start date for the filter
+  DateTime? _getStartDate(TimeFilter filter) {
+    final now = DateTime.now();
+    switch (filter) {
+      case TimeFilter.day:
+        return now.subtract(const Duration(days: 1));
+      case TimeFilter.week:
+        return now.subtract(const Duration(days: 7));
+      case TimeFilter.month:
+        return now.subtract(const Duration(days: 30));
+      case TimeFilter.all:
+      default:
+        return null;
+    }
+  }
+  
+  // NEW: Helper to format the bottom (X-axis) titles
+  Widget _bottomTitleWidgets(double value, TitleMeta meta) {
+    // value is millisecondsSinceEpoch
+    final DateTime date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    String text;
+    
+    // Show time for 24-hour view, show date for others
+    if (_selectedFilter == TimeFilter.day) {
+      text = DateFormat('HH:mm').format(date);
+    } else {
+      text = DateFormat('d/M').format(date);
+    }
+
+    return SideTitleWidget(
+      axisSide: meta.axisSide,
+      space: 8.0,
+      child: Text(text, style: const TextStyle(color: Color(0xff67727d), fontWeight: FontWeight.bold, fontSize: 10)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,7 +106,6 @@ class _PatientHistoryDetailScreenState
         title: Text(widget.patientName),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // NEW: Use the correct service function
         stream: _firestoreService
             .getPatientHealthReadingsStream(widget.patientId),
         builder: (context, snapshot) {
@@ -82,6 +123,23 @@ class _PatientHistoryDetailScreenState
 
           final readings = snapshot.data!.docs;
 
+          // --- NEW: Filter readings based on _selectedFilter ---
+          final DateTime? startDate = _getStartDate(_selectedFilter);
+          final filteredReadings = readings.where((doc) {
+            if (startDate == null) return true; // 'All'
+            final timestamp = (doc.data() as Map<String, dynamic>)['Timestamp'] as Timestamp;
+            return timestamp.toDate().isAfter(startDate);
+          }).toList();
+
+          if (filteredReadings.isEmpty) {
+             return const Center(
+              child: Text(
+                'Tidak ada data dalam rentang waktu ini.',
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            );
+          }
+          
           // --- Data Processing for Charts and Lists ---
           final List<FlSpot> systolicSpots = [];
           final List<FlSpot> diastolicSpots = [];
@@ -89,75 +147,123 @@ class _PatientHistoryDetailScreenState
           final List<DocumentSnapshot> bpReadings = [];
           final List<DocumentSnapshot> bsReadings = [];
 
-          for (int i = 0; i < readings.length; i++) {
-            final reading = readings[i].data() as Map<String, dynamic>;
-            final double xValue = i.toDouble();
+          // Get min/max timestamps for the chart's X-axis
+          final double minX = (filteredReadings.last.data() as Map<String, dynamic>)['Timestamp'].millisecondsSinceEpoch.toDouble();
+          final double maxX = (filteredReadings.first.data() as Map<String, dynamic>)['Timestamp'].millisecondsSinceEpoch.toDouble();
+
+          for (int i = 0; i < filteredReadings.length; i++) {
+            final readingDoc = filteredReadings[i];
+            final reading = readingDoc.data() as Map<String, dynamic>;
+            final timestamp = (reading['Timestamp'] as Timestamp);
+            
+            // THE FIX: Use the timestamp for the X value
+            final double xValue = timestamp.millisecondsSinceEpoch.toDouble();
 
             if (reading['SystolicValue'] != null) {
               systolicSpots.add(FlSpot(
                   xValue, (reading['SystolicValue'] as int).toDouble()));
               diastolicSpots.add(FlSpot(
                   xValue, (reading['DiastolicValue'] as int).toDouble()));
-              bpReadings.add(readings[i]);
+              bpReadings.add(readingDoc); // Add the original doc
             }
             if (reading['BloodSugarValue'] != null) {
               bloodSugarSpots.add(FlSpot(
                   xValue, (reading['BloodSugarValue'] as int).toDouble()));
-              bsReadings.add(readings[i]);
+              bsReadings.add(readingDoc); // Add the original doc
             }
           }
 
-          final reversedSystolic = systolicSpots.reversed.toList();
-          final reversedDiastolic = diastolicSpots.reversed.toList();
-          final reversedBloodSugar = bloodSugarSpots.reversed.toList();
+          // Note: No need to reverse. The spots are already in timestamp order.
 
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- NEW: Combined Chart ---
+                // --- Combined Chart ---
                 _buildChartCard(
                   context,
                   title: 'Grafik Kesehatan',
-                  chart: _buildCombinedChart(context, reversedSystolic,
-                      reversedDiastolic, reversedBloodSugar),
+                  chart: _buildCombinedChart(
+                    context, 
+                    systolicSpots,
+                    diastolicSpots, 
+                    bloodSugarSpots,
+                    minX,
+                    maxX
+                  ),
                 ),
-                // NEW: Toggle Chips
+                
+                // --- NEW: Time Filter Chips ---
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: Wrap(
                     spacing: 8.0,
                     children: [
-                      FilterChip(
-                        label: const Text('Sistolik'),
-                        selected: _showSystolic,
-                        onSelected: (bool value) {
-                          setState(() { _showSystolic = value; });
+                      ChoiceChip(
+                        label: const Text('24 Jam'),
+                        selected: _selectedFilter == TimeFilter.day,
+                        onSelected: (bool selected) {
+                          setState(() { _selectedFilter = TimeFilter.day; });
                         },
-                        selectedColor: Colors.blue[100],
-                        checkmarkColor: Colors.blue[800],
                       ),
-                      FilterChip(
-                        label: const Text('Diastolik'),
-                        selected: _showDiastolic,
-                        onSelected: (bool value) {
-                          setState(() { _showDiastolic = value; });
+                      ChoiceChip(
+                        label: const Text('7 Hari'),
+                        selected: _selectedFilter == TimeFilter.week,
+                        onSelected: (bool selected) {
+                          setState(() { _selectedFilter = TimeFilter.week; });
                         },
-                        selectedColor: Colors.red[100],
-                        checkmarkColor: Colors.red[800],
                       ),
-                      FilterChip(
-                        label: const Text('Gula Darah'),
-                        selected: _showBloodSugar,
-                        onSelected: (bool value) {
-                          setState(() { _showBloodSugar = value; });
+                      ChoiceChip(
+                        label: const Text('30 Hari'),
+                        selected: _selectedFilter == TimeFilter.month,
+                        onSelected: (bool selected) {
+                          setState(() { _selectedFilter = TimeFilter.month; });
                         },
-                        selectedColor: Colors.green[100],
-                        checkmarkColor: Colors.green[800],
+                      ),
+                       ChoiceChip(
+                        label: const Text('Semua'),
+                        selected: _selectedFilter == TimeFilter.all,
+                        onSelected: (bool selected) {
+                          setState(() { _selectedFilter = TimeFilter.all; });
+                        },
                       ),
                     ],
                   ),
+                ),
+
+                // --- NEW: Data Type Filter Chips ---
+                Wrap(
+                  spacing: 8.0,
+                  children: [
+                    FilterChip(
+                      label: const Text('Sistolik'),
+                      selected: _showSystolic,
+                      onSelected: (bool value) {
+                        setState(() { _showSystolic = value; });
+                      },
+                      selectedColor: Colors.blue[100],
+                      checkmarkColor: Colors.blue[800],
+                    ),
+                    FilterChip(
+                      label: const Text('Diastolik'),
+                      selected: _showDiastolic,
+                      onSelected: (bool value) {
+                        setState(() { _showDiastolic = value; });
+                      },
+                      selectedColor: Colors.red[100],
+                      checkmarkColor: Colors.red[800],
+                    ),
+                    FilterChip(
+                      label: const Text('Gula Darah'),
+                      selected: _showBloodSugar,
+                      onSelected: (bool value) {
+                        setState(() { _showBloodSugar = value; });
+                      },
+                      selectedColor: Colors.green[100],
+                      checkmarkColor: Colors.green[800],
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 24),
 
@@ -165,14 +271,14 @@ class _PatientHistoryDetailScreenState
                 _buildHistorySection(
                   context,
                   title: 'Riwayat Tekanan Darah',
-                  readings: bpReadings,
+                  readings: bpReadings, // This list is now correctly filtered
                   isBloodPressure: true,
                 ),
                 const SizedBox(height: 24),
                 _buildHistorySection(
                   context,
                   title: 'Riwayat Gula Darah',
-                  readings: bsReadings,
+                  readings: bsReadings, // This list is now correctly filtered
                   isBloodPressure: false,
                 ),
               ],
@@ -183,13 +289,19 @@ class _PatientHistoryDetailScreenState
     );
   }
 
-  // --- NEW: Combined Chart Widget ---
+  // --- Combined Chart Widget (MODIFIED) ---
   Widget _buildCombinedChart(
     BuildContext context,
     List<FlSpot> systolicSpots,
     List<FlSpot> diastolicSpots,
     List<FlSpot> bloodSugarSpots,
+    double minX, // NEW
+    double maxX, // NEW
   ) {
+    // Calculate a dynamic interval for the X-axis labels (e.g., show 4 labels)
+    final double timeRange = maxX - minX;
+    final double xInterval = timeRange > 0 ? timeRange / 4 : 1;
+    
     return LineChart(
       LineChartData(
         gridData: FlGridData(
@@ -206,12 +318,19 @@ class _PatientHistoryDetailScreenState
               const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           topTitles:
               const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          // NEW: Configure Bottom (X-axis) Titles
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 32, // Space for the labels
+              interval: xInterval, // Set the dynamic interval
+              getTitlesWidget: _bottomTitleWidgets, // Use our formatting function
+            ),
+          ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              interval: 50, // Set interval for the combined range
+              interval: 50,
               getTitlesWidget: _leftTitleWidgets,
               reservedSize: 42,
             ),
@@ -219,10 +338,13 @@ class _PatientHistoryDetailScreenState
         ),
         borderData: FlBorderData(
             show: true, border: Border.all(color: const Color(0xffe7e7e7))),
-        minY: 40,  // Set fixed Y-axis
-        maxY: 250, // Set fixed Y-axis
+        // NEW: Set min/max X and Y values
+        minX: minX,
+        maxX: maxX,
+        minY: 40,
+        maxY: 250,
         lineBarsData: [
-          // Conditionally add lines based on state
+          // Conditionally add lines based on state (unchanged)
           if (_showSystolic && systolicSpots.isNotEmpty)
             _lineBarData(systolicSpots, Colors.blue),
           if (_showDiastolic && diastolicSpots.isNotEmpty)
@@ -234,7 +356,7 @@ class _PatientHistoryDetailScreenState
     );
   }
   
-  // --- History List Widgets (from old history screen) ---
+  // --- History List Widgets (Unchanged) ---
   Widget _buildHistorySection(BuildContext context,
       {required String title,
       required List<DocumentSnapshot> readings,
@@ -303,6 +425,7 @@ class _PatientHistoryDetailScreenState
       required String valueText,
       required String statusText,
       required Color statusColor}) {
+    // ... (Unchanged) ...
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -333,8 +456,9 @@ class _PatientHistoryDetailScreenState
     );
   }
 
-  // --- Chart Helper Widgets (from old history screen) ---
+  // --- Chart Helper Widgets ---
   Widget _leftTitleWidgets(double value, TitleMeta meta) {
+    // ... (Unchanged) ...
     const style =
         TextStyle(color: Color(0xff67727d), fontWeight: FontWeight.bold, fontSize: 12);
     return Text(value.toInt().toString(),
@@ -342,6 +466,7 @@ class _PatientHistoryDetailScreenState
   }
 
   LineChartBarData _lineBarData(List<FlSpot> spots, Color color) {
+    // ... (Unchanged) ...
     return LineChartBarData(
       spots: spots,
       isCurved: true,
@@ -360,6 +485,7 @@ class _PatientHistoryDetailScreenState
 
   Widget _buildChartCard(BuildContext context,
       {required String title, required Widget chart}) {
+    // ... (Unchanged) ...
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
