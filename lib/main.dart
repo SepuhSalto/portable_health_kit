@@ -1,307 +1,471 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:alarm/alarm.dart';
-import 'package:alarm/utils/alarm_set.dart'; // Import AlarmSet
-import 'package:portable_health_kit/services/notification_service.dart'; // Import our service
-import 'package:portable_health_kit/services/alarm_store.dart'; // Import Hive store
-import 'package:portable_health_kit/models/alarm_data.dart'; // Import Hive model
+import 'package:firebase_core/firebase_core.dart'; // Keep if Firebase is used elsewhere
+import 'package:intl/date_symbol_data_local.dart'; // For date formatting
+import 'package:alarm/alarm.dart'; // Primary alarm package
+import 'package:alarm/utils/alarm_set.dart'; // Data structure from alarm package
+import 'package:portable_health_kit/services/notification_service.dart'; // Our notification handler
+import 'package:portable_health_kit/services/alarm_store.dart'; // Our Hive database service
+import 'package:portable_health_kit/models/alarm_data.dart'; // Our Hive data model
 import 'dart:async'; // For StreamSubscription
-import 'firebase_options.dart';
-import 'splash_screen.dart';
-import 'alarm_ring_screen.dart'; // Import the new ringing screen
-import 'package:intl/intl.dart';
+import 'firebase_options.dart'; // Firebase config (keep if needed)
+import 'splash_screen.dart'; // Initial screen
+import 'alarm_ring_screen.dart'; // Screen shown when alarm rings
+import 'main_navigation_screen.dart'; // Main app navigation hub
+import 'services/user_session_service.dart'; // For setting the default user ID
+import 'package:intl/intl.dart'; // For formatting in _updateNextAlarmNotification
+// Ensure MainNavigationScreen and UserSessionService are imported
+import 'package:portable_health_kit/main_navigation_screen.dart';
+import 'package:portable_health_kit/services/user_session_service.dart';
 
-// Global navigator key to navigate from background
+// Global navigator key allows navigation from logic outside the widget tree (like the alarm listener)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-void main() async {
+/// Entry point of the application.
+Future<void> main() async {
+  // Ensure Flutter bindings are initialized before calling async code.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase (if still needed)
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // --- Initialize Core Services ---
 
-  // Initialize Hive
-  await AlarmStore.initialize();
-  print("Main: Hive Initialized");
+  // Initialize Firebase (if used for Firestore, Auth, etc.)
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+     print("Main: Firebase Initialized");
+  } catch (e) {
+     print("Main: Firebase Initialization Error: $e");
+     // Decide how to handle Firebase init failure if it's critical
+  }
 
-  // Initialize Alarm package
-  await Alarm.init();
-  print("Main: Alarm Package Initialized");
 
-  // Initialize Notification Service
-  await notificationService.initialize(); // Use global instance
-  print("Main: Notification Service Initialized");
+  // Initialize Hive for storing alarm data and repeat flags
+  try {
+    await AlarmStore.initialize();
+    print("Main: Hive Initialized");
+  } catch (e) {
+     print("Main: Hive Initialization Error: $e");
+     // Handle Hive init failure (alarms might not load/save)
+  }
 
-  // Initialize date formatting
-  await initializeDateFormatting('id_ID', null);
 
-  // Set up the listener for when alarms start ringing
+  // Initialize the 'alarm' package (essential for scheduling and sound)
+  try {
+    await Alarm.init();
+    print("Main: Alarm Package Initialized");
+  } catch (e) {
+      print("Main: Alarm Package Initialization Error: $e");
+      // Handle failure (alarms won't work)
+  }
+
+
+  // Initialize our Notification Service (creates channels, etc.)
+  try {
+    // Uses the global instance defined in notification_service.dart
+    await notificationService.initialize();
+    print("Main: Notification Service Initialized");
+  } catch (e) {
+      print("Main: Notification Service Initialization Error: $e");
+      // Handle failure (notifications might not show)
+  }
+
+
+  // Initialize date formatting for Indonesian locale
+  try {
+    await initializeDateFormatting('id_ID', null);
+    print("Main: Date Formatting Initialized for id_ID");
+  } catch (e) {
+       print("Main: Date Formatting Initialization Error: $e");
+  }
+
+
+  // --- Setup Alarm Listener ---
+  // Start listening for alarms ringing in the background or foreground
   _setupAlarmListener();
 
-  // Run the app
+  // --- Run the App ---
   runApp(const MyApp());
 
-  // Perform startup tasks after the first frame
+  // --- Post-Startup Tasks ---
+  // Perform tasks after the first frame is rendered to avoid delaying startup
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     print("Main: Running post-frame callbacks...");
-    await _handleMissedAlarmsAndReschedule();
-    await _updateNextAlarmNotification();
-    // Maybe request battery optimization ignore here or in UI
+    try {
+      // Check for missed alarms and ensure active alarms are scheduled
+      await _handleMissedAlarmsAndReschedule();
+      // Update the ongoing notification showing the next alarm
+      await _updateNextAlarmNotification();
+      // Optional: Could add a prompt for battery optimization here if desired
+    } catch (e) {
+        print("Main: Error during post-frame callbacks: $e");
+    }
     print("Main: Post-frame callbacks complete.");
   });
 }
 
+// Holds the subscription to the alarm ringing stream
 StreamSubscription<AlarmSet>? ringSubscription;
 
+/// Sets up the listener that reacts when an alarm starts ringing.
 void _setupAlarmListener() {
-  if (ringSubscription != null) return; // Avoid multiple listeners
+  // Prevent setting up multiple listeners
+  if (ringSubscription != null) {
+      print("Main: Alarm Ring Listener already active.");
+      return;
+  }
   try {
+    // Subscribe to the stream provided by the 'alarm' package
     ringSubscription = Alarm.ringing.listen(
-      (alarmSet) {
-        print("Main: Alarm Ring Stream Received! IDs: ${alarmSet.alarms.map((a) => a.id).join(', ')}");
-        if (alarmSet.alarms.isEmpty) return;
+      (alarmSet) { // This callback runs when an alarm starts
+        print("Main: Alarm Ring Stream Received! Ringing IDs: ${alarmSet.alarms.map((a) => a.id).join(', ')} at ${DateTime.now()}");
+        if (alarmSet.alarms.isEmpty) {
+            print("Main: Ring stream received empty set, ignoring.");
+            return; // Ignore if the set is empty
+        }
 
-        // Typically only one alarm rings at a time with `allowAlarmOverlap: false` (default)
-        // If overlap is allowed, we might just handle the first one.
+        // Handle the first ringing alarm in the set
+        // (Usually only one unless allowAlarmOverlap is true)
         final ringingAlarmSettings = alarmSet.alarms.first;
 
-        // Trigger the full-screen notification
+        // 1. Trigger the silent full-screen notification
+        // This attempts to wake the device and prepare the UI transition
         notificationService.showFullScreenAlarmNotification(
             ringingAlarmSettings.id,
             ringingAlarmSettings.notificationSettings.title,
             ringingAlarmSettings.notificationSettings.body);
 
-        // Navigate to the ringing screen using the global key
+        // 2. Navigate to the dedicated ringing screen using the global key
         final context = navigatorKey.currentContext;
-        if (context != null) {
+        if (context != null && ModalRoute.of(context)?.isCurrent != true) {
+            // Check if context is available and we're not already on the top route somehow
           Navigator.push(
             context,
             MaterialPageRoute(
+              // Pass the ringing alarm's settings to the screen
               builder: (_) => AlarmRingScreen(alarmSettings: ringingAlarmSettings),
-              fullscreenDialog: true, // Make it feel more like an overlay
+              // Make it appear like an overlay
+              fullscreenDialog: true,
             ),
           );
-           print("Main: Navigated to AlarmRingScreen for ID=${ringingAlarmSettings.id}");
+           print("Main: Successfully navigated to AlarmRingScreen for ID=${ringingAlarmSettings.id}");
         } else {
-             print("Main: ERROR - Navigator context was null, cannot navigate to AlarmRingScreen.");
+             print("Main: ERROR - Navigator context was null or not current, cannot navigate to AlarmRingScreen.");
+             // Fallback: The full-screen notification might still appear.
         }
       },
       onError: (error) {
+        // Handle errors in the stream (e.g., native side issues)
         print("Main: Error in Alarm Ring Stream: $error");
-        // Optionally try to restart the listener
+        // Reset subscription state and attempt to re-listen after a delay
+        ringSubscription?.cancel(); // Cancel existing just in case
         ringSubscription = null;
-        Future.delayed(const Duration(seconds: 5), _setupAlarmListener);
+        Future.delayed(const Duration(seconds: 10), _setupAlarmListener);
       },
       onDone: () {
+        // Handle stream closure (less common unless Alarm.init() changes)
         print("Main: Alarm Ring Stream Closed.");
-        ringSubscription = null; // Allow restarting if needed
+        ringSubscription = null; // Allow re-subscribing if needed
       },
-      cancelOnError: false,
+      cancelOnError: false, // Keep listening even after an error
     );
     print("Main: Alarm Ring Stream Listener Attached.");
   } catch (e) {
+     // Catch errors during the initial listen setup
      print("Main: Error attaching Alarm Ring Stream Listener: $e");
   }
 
-  // Also listen to schedule changes to update the ongoing notification
-   Alarm.scheduled.listen((_) async {
-       print("Main: Alarm schedule changed, updating next alarm notification.");
-       await _updateNextAlarmNotification();
-   });
+  // --- Setup Listener for Schedule Changes ---
+  // Listens for when `Alarm.set` or `Alarm.stop` is called.
+  try {
+    Alarm.scheduled.listen(
+      (_) async {
+         print("Main: Alarm schedule potentially changed, updating next alarm notification.");
+         // Update the ongoing notification whenever an alarm is set or stopped
+         await _updateNextAlarmNotification();
+     },
+      onError: (error) => print("Main: Error in Alarm Scheduled Stream: $error"),
+      onDone: () => print("Main: Alarm Scheduled Stream Closed."),
+      cancelOnError: false,
+    );
     print("Main: Alarm Scheduled Stream Listener Attached.");
+  } catch (e) {
+      print("Main: Error attaching Alarm Scheduled Stream Listener: $e");
+  }
 }
 
 
-// Function to handle missed alarms and ensure active ones are scheduled
+/// Checks stored alarms against currently scheduled ones.
+/// Reschedules active alarms if they were missed or not scheduled correctly.
 Future<void> _handleMissedAlarmsAndReschedule() async {
   print("Main: Handling missed alarms and rescheduling...");
   final now = DateTime.now();
-  final List<AlarmData> storedAlarms = AlarmStore.getAllAlarms();
   int rescheduledCount = 0;
+  List<AlarmData> storedAlms = []; // Renamed variable
 
-  for (final alarmData in storedAlarms) {
+  try {
+    storedAlms = AlarmStore.getAllAlarms(); // Load alarms from Hive
+  } catch (e) {
+     print("Main: ERROR loading alarms during reschedule check: $e");
+     return; // Cannot proceed without alarm data
+  }
+
+
+  for (final alarmData in storedAlms) {
+    // Skip alarms that are marked as disabled in our Hive store
     if (!alarmData.enabled) {
         print("  - Skipping disabled alarm ID=${alarmData.id}");
         continue;
     }
 
+    // Calculate the next theoretical trigger time based on stored hour/minute
     final TimeOfDay alarmTime = TimeOfDay(hour: alarmData.hour, minute: alarmData.minute);
     DateTime nextScheduleTime = _calculateNextDay(alarmTime);
 
-    // *** FIX IS HERE ***
-    // Use 'await' to get the AlarmSettings? from the Future
-    final AlarmSettings? currentSetting = await Alarm.getAlarm(alarmData.id);
-    // *** END FIX ***
+    // Get the currently scheduled alarm (if any) from the `alarm` package
+    AlarmSettings? currentSetting;
+    try {
+        currentSetting = await Alarm.getAlarm(alarmData.id);
+    } catch (e) {
+        print("  - ERROR getting current setting for alarm ID=${alarmData.id}: $e");
+        // Proceed assuming rescheduling might be needed
+    }
 
-    // Now check if currentSetting is null before accessing dateTime
-    if (currentSetting == null ||
-        currentSetting.dateTime.millisecondsSinceEpoch != nextScheduleTime.millisecondsSinceEpoch ||
-        currentSetting.dateTime.isBefore(now))
+
+    // Determine if rescheduling is needed:
+    // 1. If it's not currently scheduled (`currentSetting == null`).
+    // 2. If the scheduled time is different from our calculated next time.
+    // 3. If the scheduled time is in the past (it was missed).
+    bool needsReschedule = currentSetting == null ||
+                           currentSetting.dateTime.millisecondsSinceEpoch != nextScheduleTime.millisecondsSinceEpoch ||
+                           currentSetting.dateTime.isBefore(now);
+
+    if (needsReschedule)
     {
-      print("  - Rescheduling required for ID=${alarmData.id}. Current: ${currentSetting?.dateTime}, Next: $nextScheduleTime");
+      print("  - Rescheduling required for ID=${alarmData.id}. Current: ${currentSetting?.dateTime}, Calculated Next: $nextScheduleTime");
 
-      // Create AlarmSettings using data from Hive (AlarmData)
+      // Create the AlarmSettings object using data from Hive (AlarmData)
+      // Ensure the sound path is the full asset path
       final settingsToSchedule = AlarmSettings(
         id: alarmData.id,
         dateTime: nextScheduleTime,
         loopAudio: alarmData.loopAudio,
         vibrate: alarmData.vibrate,
-        assetAudioPath: alarmData.soundAssetPath, // Use the full path stored in Hive
-        volumeSettings: const VolumeSettings.fixed(),
+        assetAudioPath: alarmData.soundAssetPath, // Use the path stored in Hive
+        volumeSettings: const VolumeSettings.fixed(), // Using default volume
         notificationSettings: NotificationSettings(
           title: alarmData.title,
           body: alarmData.body,
           stopButton: 'Stop',
         ),
-        allowAlarmOverlap: false,
+        allowAlarmOverlap: false, // Prevent multiple alarms ringing at once
       );
+       print("    - Rescheduling with details: ID=${settingsToSchedule.id}, Time=${settingsToSchedule.dateTime}, Sound='${settingsToSchedule.assetAudioPath}'");
 
-      final success = await Alarm.set(alarmSettings: settingsToSchedule); // Use settingsToSchedule
+      // Attempt to set/reschedule the alarm
+      bool success = false;
+      try {
+          success = await Alarm.set(alarmSettings: settingsToSchedule);
+      } catch (e) {
+           print("  - EXCEPTION during Alarm.set for ID=${alarmData.id}: $e");
+      }
+
       if (success) {
           print("  - Successfully rescheduled ID=${alarmData.id} for $nextScheduleTime");
           rescheduledCount++;
       } else {
-          print("  - FAILED to reschedule ID=${alarmData.id}");
+          print("  - FAILED to reschedule ID=${alarmData.id}. Check permissions and logs.");
       }
     } else {
-         // Use currentSetting.dateTime safely here because we know it's not null
+         // Log if the alarm is already scheduled correctly
          print("  - Alarm ID=${alarmData.id} is already correctly scheduled for ${currentSetting.dateTime}.");
     }
   }
-   print("Main: Finished rescheduling check. Rescheduled $rescheduledCount alarms.");
+   print("Main: Finished rescheduling check. Attempted to reschedule $rescheduledCount alarms.");
 }
 
-// Function to update the ongoing notification
+/// Finds the next upcoming enabled alarm and updates the ongoing status bar notification.
 Future<void> _updateNextAlarmNotification() async {
    print("Main: Updating next alarm notification...");
-   final List<AlarmData> alarms = AlarmStore.getAllAlarms();
+   List<AlarmData> alarms = [];
+   try {
+       alarms = AlarmStore.getAllAlarms();
+   } catch(e) {
+        print("Main: ERROR loading alarms for next alarm notification: $e");
+        await notificationService.cancelNextAlarmOngoingNotification(); // Clear if error
+        return;
+   }
+
    final now = DateTime.now();
+   AlarmData? nextAlarmData;
+   DateTime? earliestNextTime;
 
-   // Find the next enabled alarm that is scheduled in the future
-   AlarmData? nextAlarm;
-   DateTime? earliestTime;
-
+   // Iterate through stored alarms to find the soonest upcoming enabled one
    for (final alarmData in alarms) {
-       if (alarmData.enabled) {
+       if (alarmData.enabled) { // Only consider enabled alarms
            final alarmTime = TimeOfDay(hour: alarmData.hour, minute: alarmData.minute);
+           // Calculate the next trigger time for this alarm
            DateTime triggerTime = _calculateNextDay(alarmTime);
 
-           // Ensure the calculated time is indeed in the future relative to now
+           // Check if this trigger time is in the future
            if (triggerTime.isAfter(now)) {
-               if (earliestTime == null || triggerTime.isBefore(earliestTime)) {
-                   earliestTime = triggerTime;
-                   nextAlarm = alarmData;
+               // If it's the first future alarm found, or earlier than the current earliest, update
+               if (earliestNextTime == null || triggerTime.isBefore(earliestNextTime)) {
+                   earliestNextTime = triggerTime;
+                   nextAlarmData = alarmData;
                }
            }
        }
    }
 
-   if (nextAlarm != null && earliestTime != null) {
-       await notificationService.showNextAlarmOngoingNotification(earliestTime, nextAlarm.title);
+   // Show or cancel the ongoing notification based on whether an upcoming alarm was found
+   if (nextAlarmData != null && earliestNextTime != null) {
+       await notificationService.showNextAlarmOngoingNotification(earliestNextTime, nextAlarmData.title);
    } else {
        await notificationService.cancelNextAlarmOngoingNotification();
    }
+    print("Main: Update next alarm notification complete.");
 }
 
 
-// Helper function (can be moved to a utility file)
+/// Helper function to calculate the next DateTime for a given TimeOfDay.
+/// If the time has already passed today, it returns the time for tomorrow.
 DateTime _calculateNextDay(TimeOfDay time) {
   final now = DateTime.now();
-  // Calculate today's time at the specified hour/minute
   DateTime next = DateTime(now.year, now.month, now.day, time.hour, time.minute);
-
-  // *** FIX: Only add a day if the calculated time is strictly in the past ***
   if (next.isBefore(now)) {
     next = next.add(const Duration(days: 1));
   }
-  // *** END FIX ***
   return next;
 }
 
 
+/// The root widget of the application.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
+  // Define theme colors (consider moving to a separate theme file)
   static const Color primaryGreen = Color(0xFF46A24A);
-    // Define a secondary green color (adjust if needed)
   static const Color secondaryGreen = Color(0xFF66BB6A);
-    // Define a light background color
   static const Color lightBackground = Color(0xFFF0F4F0);
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Portable Health Kit',
-      navigatorKey: navigatorKey, // Assign the global key
-      theme: ThemeData( 
-        primaryColor: primaryGreen, // Set primary color
-        scaffoldBackgroundColor: lightBackground, // Light background
-        fontFamily: 'Poppins', // Keep your font
+      title: 'Portable Health Kit Bali-Sehat',
+      navigatorKey: navigatorKey, // Crucial for navigating from the alarm listener
+      theme: ThemeData(
+        primaryColor: primaryGreen,
+        scaffoldBackgroundColor: lightBackground,
+        fontFamily: 'Poppins',
         colorScheme: ColorScheme.fromSeed(
-          seedColor: primaryGreen, // Base color for scheme generation
-          primary: primaryGreen, // Explicitly set primary
-          secondary: secondaryGreen, // Explicitly set secondary/accent
-          background: lightBackground, // Background color
-          brightness: Brightness.light, // Use light theme overall
+          seedColor: primaryGreen,
+          primary: primaryGreen,
+          secondary: secondaryGreen,
+          background: lightBackground,
+          brightness: Brightness.light,
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: primaryGreen, // Green AppBar
-          foregroundColor: Colors.white, // White text/icons on AppBar
+          backgroundColor: primaryGreen,
+          foregroundColor: Colors.white,
           elevation: 2,
-          titleTextStyle: TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Colors.white, // Ensure AppBar title is white
-          ),
-          iconTheme: IconThemeData(color: Colors.white), // Ensure AppBar icons are white
+          titleTextStyle: TextStyle( fontFamily: 'Poppins', fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, ),
+          iconTheme: IconThemeData(color: Colors.white),
         ),
         cardTheme: CardThemeData(
           elevation: 2,
           shadowColor: Colors.black.withOpacity(0.05),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          color: Colors.white, // White cards
+          shape: RoundedRectangleBorder( borderRadius: BorderRadius.circular(16), ),
+          color: Colors.white,
         ),
         inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+          border: OutlineInputBorder( borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none, ),
           filled: true,
-          fillColor: Colors.white, // White text fields
+          fillColor: Colors.white,
           contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: primaryGreen, // Green buttons
-            foregroundColor: Colors.white, // White text on buttons
+            backgroundColor: primaryGreen,
+            foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Poppins',
-            ),
+            shape: RoundedRectangleBorder( borderRadius: BorderRadius.circular(12), ),
+            textStyle: const TextStyle( fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins', ),
           ),
         ),
-        // Theme for the Bottom Navigation Bar
         bottomNavigationBarTheme: BottomNavigationBarThemeData(
-           selectedItemColor: primaryGreen, // Highlight selected icon green
-           unselectedItemColor: Colors.grey[600], // Grey for unselected
-           backgroundColor: Colors.white, // White background for navbar
-           type: BottomNavigationBarType.fixed, // Ensure type is fixed
-           showUnselectedLabels: true, // Show labels always
+           selectedItemColor: primaryGreen,
+           unselectedItemColor: Colors.grey[600],
+           backgroundColor: Colors.white,
+           type: BottomNavigationBarType.fixed,
+           showUnselectedLabels: true,
         ),
-        useMaterial3: true,
+         dialogTheme: DialogThemeData( // Theme for dialogs like permission denied
+           backgroundColor: Colors.white,
+           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+         ),
+        useMaterial3: true, // Enable Material 3 features
       ),
-      // *** END THEME UPDATE ***
-      debugShowCheckedModeBanner: false,
-      home: const SplashScreen(),
+      debugShowCheckedModeBanner: false, // Hide debug banner
+      home: const SplashScreen(), // Start with the splash screen
     );
   }
 }
+
+// Ensure SplashScreen and UserSessionService are defined/imported correctly
+// (Assuming SplashScreen handles initial setup and navigation to MainNavigationScreen)
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Simulate login and navigate after a delay
+    _logInHealthWorkerAndNavigate();
+  }
+
+  Future<void> _logInHealthWorkerAndNavigate() async {
+    // Set a default/hardcoded user ID for the kiosk session
+    UserSessionService().setCurrentUserId("clinic_bali_sehat_kiosk_01");
+    print("SplashScreen: Kiosk User ID set.");
+
+    // Wait for splash screen duration
+    await Future.delayed(const Duration(seconds: 3));
+
+    // Navigate to the main app screen if the widget is still mounted
+    if (mounted) {
+       print("SplashScreen: Navigating to MainNavigationScreen.");
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).primaryColor, // Use theme color
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.favorite, color: Colors.white, size: 80), // App icon
+            const SizedBox(height: 20),
+            const Text( // App name
+              'Bali-Sehat',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+             const SizedBox(height: 30), // Increased spacing
+             const CircularProgressIndicator(color: Colors.white), // Loading indicator
+             const SizedBox(height: 10),
+             Text('Memuat...', style: TextStyle(color: Colors.white70)), // Loading text
+          ],
+        ),
+      ),
+    );
+  }
+}
+

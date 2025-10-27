@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart';
-import 'package:portable_health_kit/models/alarm_data.dart'; // Import Hive model
-import 'package:portable_health_kit/services/alarm_store.dart'; // Import Hive store
-import 'package:portable_health_kit/services/notification_service.dart'; // For sound list
-// Note: No need to import main.dart for alarmCallback anymore
+import 'package:portable_health_kit/models/alarm_data.dart';
+import 'package:portable_health_kit/services/alarm_store.dart';
 
+// Define availableSounds list directly here or import if defined elsewhere (e.g., notification_service)
+// Ensure these filenames EXACTLY match your files in assets/sounds/
 const List<String> availableSounds = [
-  // Use file names only
-  'alarm_classic.wav',
+  'alarm_classic.wav', // Make sure this file exists in assets/sounds/
   'alarm_simple.wav',
   'waktunya_minum_obat.wav',
   'lakukan_senam_kaki.wav',
 ];
 
+
 class AddEditAlarmScreen extends StatefulWidget {
-  final int? alarmId; // Pass ID from AlarmData
+  final int? alarmId; // Pass ID from AlarmData if editing
 
   const AddEditAlarmScreen({super.key, this.alarmId});
 
@@ -23,78 +23,91 @@ class AddEditAlarmScreen extends StatefulWidget {
 }
 
 class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
+  // State variables for the form fields
   final _titleController = TextEditingController();
   TimeOfDay _selectedTime = TimeOfDay.now();
-  // Initialize with the first available sound (normalize to full asset path)
+  // Store the full asset path, initialized to the first sound
   String _selectedSoundAssetPath = 'assets/sounds/${availableSounds.first}';
   bool _loopAudio = true;
   bool _vibrate = true;
   bool _repeatEveryday = false; // Default for new alarms
 
-  bool _isLoading = false;
-  bool _isEditing = false;
+  bool _isLoading = false; // To show loading indicator on save/load
+  bool _isEditing = false; // To determine if loading existing data
 
   @override
   void initState() {
     super.initState();
-    _isEditing = widget.alarmId != null;
+    _isEditing = widget.alarmId != null; // Check if an ID was passed
     if (_isEditing) {
+      // If editing, load the existing alarm's details
       _loadAlarmDetails(widget.alarmId!);
     } else {
+      // If creating a new alarm, set default values
       _titleController.text = 'Alarm';
+      // Set default time slightly in the future
       final now = DateTime.now().add(const Duration(minutes: 5));
       _selectedTime = TimeOfDay(hour: now.hour, minute: now.minute);
-      // Ensure normalized default
-      _selectedSoundAssetPath = _normalizeAssetPath(_selectedSoundAssetPath);
+      // Ensure default sound path is the full asset path
+      _selectedSoundAssetPath = 'assets/sounds/${availableSounds.first}';
     }
   }
 
-  String _normalizeAssetPath(String path) {
-    var p = path.trim();
-    p = p.replaceAll('assets/sounds/assets/', 'assets/sounds/');
-    p = p.replaceAll('assets/assets/', 'assets/');
-    p = p.replaceAll('assets/sounds/sounds/', 'assets/sounds/');
-    if (!p.startsWith('assets/')) {
-      p = 'assets/sounds/$p';
-    }
-    return p;
-  }
-
+  /// Loads alarm details from Hive store based on the provided ID.
   Future<void> _loadAlarmDetails(int id) async {
-    setState(() { _isLoading = true; });
+    // Show loading indicator while fetching data
+    if (mounted) setState(() { _isLoading = true; });
+
+    // Get alarm data from Hive
     final alarmData = AlarmStore.getAlarmById(id);
 
     if (alarmData != null && mounted) {
+      // Construct the expected full path from the stored data
+      String loadedPath = alarmData.soundAssetPath;
+      // Basic check/correction: ensure it starts with 'assets/sounds/'
+      if (!loadedPath.startsWith('assets/sounds/')) {
+          loadedPath = 'assets/sounds/$loadedPath'; // Prepend if missing
+      }
+
+      // Update the state with loaded data
       setState(() {
         _titleController.text = alarmData.title;
         _selectedTime = TimeOfDay(hour: alarmData.hour, minute: alarmData.minute);
-        _selectedSoundAssetPath = _normalizeAssetPath(alarmData.soundAssetPath);
+        // Validate the loaded path against available sounds, default if not found
+        if (availableSounds.any((name) => loadedPath == 'assets/sounds/$name')) {
+             _selectedSoundAssetPath = loadedPath;
+        } else {
+             _selectedSoundAssetPath = 'assets/sounds/${availableSounds.first}'; // Default
+             print("AddEditAlarmScreen Warning: Loaded invalid sound path '${alarmData.soundAssetPath}', defaulting to ${_selectedSoundAssetPath}");
+        }
         _loopAudio = alarmData.loopAudio;
         _vibrate = alarmData.vibrate;
         _repeatEveryday = alarmData.repeatEveryday;
-        _isLoading = false;
+        _isLoading = false; // Hide loading indicator
       });
     } else if (mounted) {
-      // Handle case where alarm data is missing
+      // Handle case where alarm data for the ID is missing in Hive
        setState(() { _isLoading = false; });
        ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(content: Text('Error: Alarm data for ID $id not found.'), backgroundColor: Colors.red),
+         SnackBar(content: Text('Error: Data alarm untuk ID $id tidak ditemukan.'), backgroundColor: Colors.red),
        );
-       Navigator.of(context).pop(); // Go back if data is missing
+       Navigator.of(context).pop(); // Go back if data can't be loaded
     }
   }
 
   @override
   void dispose() {
+    // Clean up the controller when the widget is disposed
     _titleController.dispose();
     super.dispose();
   }
 
+  /// Shows the time picker dialog to select the alarm time.
   Future<void> _selectTime(BuildContext context) async {
-    // ... (selectTime function is unchanged) ...
      final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
+      // Use a builder to force 24-hour format regardless of device settings
       builder: (BuildContext context, Widget? child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
@@ -102,132 +115,193 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
         );
       },
     );
+    // If a time was picked, update the state
     if (picked != null && picked != _selectedTime) {
       setState(() { _selectedTime = picked; });
     }
   }
 
+  /// Calculates the next trigger DateTime based on the selected TimeOfDay.
   DateTime _calculateNextTrigger(TimeOfDay time) {
     final now = DateTime.now();
-    // Calculate today's time at the specified hour/minute
+    // Calculate the time for today
     DateTime next = DateTime(now.year, now.month, now.day, time.hour, time.minute);
-
-    // *** FIX: Only add a day if the calculated time is strictly in the past ***
+    // If that time is already in the past today, schedule it for tomorrow
     if (next.isBefore(now)) {
       next = next.add(const Duration(days: 1));
     }
-    // *** END FIX ***
     return next;
   }
 
+  /// Saves the alarm settings to Hive and schedules it using the Alarm package.
   Future<void> _saveAlarm() async {
+    // Basic validation
     if (_titleController.text.isEmpty) {
-      // ... (show error SnackBar) ...
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+           const SnackBar(content: Text('Judul alarm tidak boleh kosong.'), backgroundColor: Colors.red),
+      );
       return;
     }
+    // Show loading indicator during save operation
     setState(() { _isLoading = true; });
 
+    // Determine the alarm ID (use existing or generate new)
     final alarmId = widget.alarmId ?? (DateTime.now().millisecondsSinceEpoch % 100000 + 1);
     final title = _titleController.text;
     final body = 'Waktunya untuk: $title';
+    // Calculate the exact time for the next trigger
     final triggerTime = _calculateNextTrigger(_selectedTime);
-    final normalizedSound = _normalizeAssetPath(_selectedSoundAssetPath);
+    // Use the currently selected full sound asset path
+    final soundPath = _selectedSoundAssetPath;
 
-    print("Saving Alarm ID=$alarmId:");
+    // Log details for debugging
+    print("AddEditAlarmScreen: Saving Alarm ID=$alarmId:");
     print("  Title: $title");
-    print("  Sound Asset: $normalizedSound");
+    print("  Sound Asset Path: $soundPath");
     print("  Time: ${_selectedTime.hour}:${_selectedTime.minute}");
     print("  Repeat: $_repeatEveryday");
     print("  Next Trigger: $triggerTime");
 
+    // Create the AlarmSettings object required by the `alarm` package
     final alarmSettings = AlarmSettings(
       id: alarmId,
       dateTime: triggerTime,
       loopAudio: _loopAudio,
       vibrate: _vibrate,
-      assetAudioPath: normalizedSound,
-      volumeSettings: const VolumeSettings.fixed(),
+      assetAudioPath: soundPath, // Pass the full asset path
+      volumeSettings: const VolumeSettings.fixed(), // Use default/fixed volume for now
       notificationSettings: NotificationSettings(
         title: title,
         body: body,
-        stopButton: 'Stop',
+        stopButton: 'Stop', // Text for the stop button on the notification
       ),
-      allowAlarmOverlap: false,
+      allowAlarmOverlap: false, // Prevent multiple instances ringing simultaneously
     );
 
-    // Schedule using the `alarm` package
+    // Attempt to schedule the alarm using the `alarm` package
     final success = await Alarm.set(alarmSettings: alarmSettings);
 
     if (success) {
-      print("Alarm $alarmId scheduled successfully via Alarm.set()");
-      // Save/update details (including repeat flag) in Hive
+      print("AddEditAlarmScreen: Alarm $alarmId scheduled successfully via Alarm.set()");
+      // Save/update the details (including repeat flag) in Hive store
       await AlarmStore.upsert(
           alarmSettings,
-          enabled: true, // Saving means it's enabled
-          repeatEveryday: _repeatEveryday);
+          enabled: true, // When saving, assume it's enabled
+          repeatEveryday: _repeatEveryday); // Save the repeat setting
     } else {
-        print("FAILED to schedule alarm $alarmId via Alarm.set()");
+        print("AddEditAlarmScreen: FAILED to schedule alarm $alarmId via Alarm.set()");
     }
 
+    // Check if the widget is still mounted before updating state or navigating
     if (!mounted) return;
-    setState(() { _isLoading = false; });
+    setState(() { _isLoading = false; }); // Hide loading indicator
 
     if (success) {
-      Navigator.of(context).pop(true); // Pop and indicate success
+      Navigator.of(context).pop(true); // Pop screen and return true to indicate success
     } else {
+      // Show error message if scheduling failed
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gagal menyimpan alarm. Pastikan izin diberikan.'), backgroundColor: Colors.red),
+        const SnackBar(content: Text('Gagal menyimpan alarm. Pastikan izin sistem diberikan.'), backgroundColor: Colors.red),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // ... (show loading indicator if _isLoading and _isEditing) ...
+    // Show a loading screen if loading details for an existing alarm
+     if (_isLoading && _isEditing) {
+       return Scaffold(
+         appBar: AppBar(title: const Text('Memuat Alarm...')),
+         body: const Center(child: CircularProgressIndicator()),
+       );
+     }
+    // Main UI for adding/editing
     return Scaffold(
-      appBar: AppBar( /* ... */ ),
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Edit Alarm' : 'Tambah Alarm Baru'),
+        leading: IconButton( // Add a back button
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: SingleChildScrollView(
+        // Add padding around the form content
         padding: const EdgeInsets.all(24.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.stretch, // Make elements fill width
           children: [
-            // Title TextField
+            // --- Title Field ---
             const Text('Judul Alarm', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            TextField(controller: _titleController, /* ... */ ),
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                 hintText: 'e.g., Minum Obat Pagi',
+                 prefixIcon: Icon(Icons.label_outline),
+                 // fillColor and filled already set by theme
+              ),
+            ),
             const SizedBox(height: 24),
 
-            // Time Picker Card
+            // --- Time Picker ---
             const Text('Waktu', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Card(child: ListTile( /* ... */ onTap: () => _selectTime(context),)),
+            Card(
+              // Use theme card color
+              child: ListTile(
+                leading: const Icon(Icons.access_time),
+                title: Text(_selectedTime.format(context), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.arrow_drop_down), // Indicate tappable
+                onTap: () => _selectTime(context), // Open time picker on tap
+              ),
+            ),
             const SizedBox(height: 24),
 
-            // Sound Selector
+            // --- Sound Selector ---
             const Text('Suara Alarm', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            _buildSoundSelector(), // Uses full asset path now
-             const SizedBox(height: 12),
+            _buildSoundSelector(), // The dropdown widget
+            const SizedBox(height: 12),
 
-             // Repeat Switch
+             // --- Repeat Switch ---
             SwitchListTile(
-               contentPadding: EdgeInsets.zero,
+               contentPadding: EdgeInsets.zero, // Remove default padding
                title: const Text('Ulangi Setiap Hari'),
                value: _repeatEveryday,
                onChanged: (value) => setState(() => _repeatEveryday = value),
-               activeColor: Theme.of(context).primaryColor,
+               activeColor: Theme.of(context).primaryColor, // Use theme color
             ),
              const SizedBox(height: 12),
 
+             // --- Optional: Loop Audio Switch ---
+             SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Putar Suara Berulang'),
+                value: _loopAudio,
+                onChanged: (value) => setState(() => _loopAudio = value),
+                activeColor: Theme.of(context).primaryColor,
+             ),
+             // --- Optional: Vibrate Switch ---
+              SwitchListTile(
+                 contentPadding: EdgeInsets.zero,
+                 title: const Text('Getar'),
+                 value: _vibrate,
+                 onChanged: (value) => setState(() => _vibrate = value),
+                 activeColor: Theme.of(context).primaryColor,
+              ),
 
-             // Optional: Add Loop and Vibrate switches if needed
-             // SwitchListTile(...) for _loopAudio
-             // SwitchListTile(...) for _vibrate
-
-            const SizedBox(height: 40),
+            const SizedBox(height: 40), // Spacing before button
+            // --- Save Button ---
             ElevatedButton(
-              onPressed: _isLoading ? null : _saveAlarm,
-              child: _isLoading ? const CircularProgressIndicator() : const Text('Simpan Alarm'),
+              onPressed: _isLoading ? null : _saveAlarm, // Disable button while loading
+              // Show loading indicator inside button if saving
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2,))
+                  : const Text('Simpan Alarm'),
             ),
           ],
         ),
@@ -235,21 +309,31 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
     );
   }
 
-  // Sound selector uses full asset path
+  /// Builds the dropdown widget for selecting the alarm sound.
   Widget _buildSoundSelector() {
     return DropdownButtonFormField<String>(
-      value: _normalizeAssetPath(_selectedSoundAssetPath),
-      decoration: const InputDecoration(prefixIcon: Icon(Icons.music_note_outlined), /* ... */),
-      items: availableSounds.map((String fileName) {
-        final String assetPath = 'assets/sounds/$fileName';
+      // The current value must be the full asset path
+      value: _selectedSoundAssetPath,
+      // Use theme input decoration
+      decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.music_note_outlined),
+          // labelText: 'Suara', // Optional label
+      ),
+      // Generate items for the dropdown
+      items: availableSounds.map((String soundFileName) {
+        // Construct the full asset path to be used as the item's value
+        final String assetPath = 'assets/sounds/$soundFileName';
         return DropdownMenuItem<String>(
-          value: assetPath,
-          child: Text(fileName.split('.').first.replaceAll('_', ' ').toUpperCase()),
+          value: assetPath, // The value associated with this item
+          // The text displayed to the user
+          child: Text(soundFileName.split('.').first.replaceAll('_', ' ').toUpperCase()),
         );
       }).toList(),
+      // Update state when a new sound is selected
       onChanged: (String? newValue) {
         if (newValue != null) {
-          setState(() { _selectedSoundAssetPath = _normalizeAssetPath(newValue); });
+          // Store the selected full asset path
+          setState(() { _selectedSoundAssetPath = newValue; });
         }
       },
     );
