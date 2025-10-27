@@ -7,15 +7,10 @@ import 'package:portable_health_kit/services/notification_service.dart'; // Our 
 import 'package:portable_health_kit/services/alarm_store.dart'; // Our Hive database service
 import 'package:portable_health_kit/models/alarm_data.dart'; // Our Hive data model
 import 'dart:async'; // For StreamSubscription
-import 'firebase_options.dart'; // Firebase config (keep if needed)
-import 'splash_screen.dart'; // Initial screen
+import 'firebase_options.dart'; // Firebase config (keep if needed) // Initial screen
 import 'alarm_ring_screen.dart'; // Screen shown when alarm rings
 import 'main_navigation_screen.dart'; // Main app navigation hub
-import 'services/user_session_service.dart'; // For setting the default user ID
-import 'package:intl/intl.dart'; // For formatting in _updateNextAlarmNotification
-// Ensure MainNavigationScreen and UserSessionService are imported
-import 'package:portable_health_kit/main_navigation_screen.dart';
-import 'package:portable_health_kit/services/user_session_service.dart';
+import 'services/user_session_service.dart'; // For setting the default user ID// For formatting in _updateNextAlarmNotification
 
 // Global navigator key allows navigation from logic outside the widget tree (like the alarm listener)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

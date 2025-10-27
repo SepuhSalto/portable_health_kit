@@ -62,6 +62,20 @@ class FirestoreService {
         .snapshots();
   }
 
+  Future<Map<String, dynamic>?> getPatientData(String patientId) async {
+    try {
+      final docSnapshot = await _patientsCollection.doc(patientId).get();
+      if (docSnapshot.exists) {
+        return docSnapshot.data() as Map<String, dynamic>?;
+      } else {
+        print("FirestoreService: No patient found with ID: $patientId");
+        return null;
+      }
+    } catch (e) {
+      print("FirestoreService: Error getting patient data for ID $patientId: $e");
+      return null; // Return null on error
+    }
+  }
 
   // --- OLD Reading Streams (These are now incorrect) ---
   // We leave them for now, but they will be fixed later.

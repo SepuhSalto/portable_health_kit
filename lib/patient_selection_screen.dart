@@ -6,7 +6,10 @@ import 'package:portable_health_kit/services/firestore_service.dart';
 enum PatientAction {
   viewHistory,
   inputBloodPressure,
-  inputBloodSugar
+  inputBloodSugar,
+  inputUricAcid,
+  inputCholesterol,
+  inputWaist
 }
 
 class PatientSelectionScreen extends StatefulWidget {

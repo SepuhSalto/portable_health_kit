@@ -1,6 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
-import 'package:flutter/material.dart'; // For Color
 import 'package:intl/intl.dart'; // For DateFormat
 
 // List of sound filenames expected in assets/sounds/
