@@ -41,48 +41,49 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDm57eIPOxez7FkOKPidKsoiwGm9RmblDU',
-    appId: '1:875629801749:web:2d65b03436713ca0bdf91c',
-    messagingSenderId: '875629801749',
-    projectId: 'portable-health-kits-f1986',
-    authDomain: 'portable-health-kits-f1986.firebaseapp.com',
-    storageBucket: 'portable-health-kits-f1986.firebasestorage.app',
-    measurementId: 'G-4ZC8PTQH12',
+    apiKey: 'AIzaSyBdXSX9jE3nxwY5Z7ppRRmmAnVfN-9mbXE',
+    appId: '1:663729522895:web:10c71af88820f13fcf8fba',
+    messagingSenderId: '663729522895',
+    projectId: 'portable-health-kit-b1f2f',
+    authDomain: 'portable-health-kit-b1f2f.firebaseapp.com',
+    storageBucket: 'portable-health-kit-b1f2f.firebasestorage.app',
+    measurementId: 'G-K516GPE69D',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyB-zV1Cka9giZUG7vRCwN9VBctGDpFiXX8',
-    appId: '1:875629801749:android:3d7fb71a259e9663bdf91c',
-    messagingSenderId: '875629801749',
-    projectId: 'portable-health-kits-f1986',
-    storageBucket: 'portable-health-kits-f1986.firebasestorage.app',
+    apiKey: 'AIzaSyB9-Fx1ABy71Fm8wVhsAmWeU9uCTq86Rho',
+    appId: '1:663729522895:android:b4f1180b4deb99b6cf8fba',
+    messagingSenderId: '663729522895',
+    projectId: 'portable-health-kit-b1f2f',
+    storageBucket: 'portable-health-kit-b1f2f.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCCDutbrNd2Djs5YzWmHPHM9f1N4SsTVQQ',
-    appId: '1:875629801749:ios:fb178a7a0a75f71abdf91c',
-    messagingSenderId: '875629801749',
-    projectId: 'portable-health-kits-f1986',
-    storageBucket: 'portable-health-kits-f1986.firebasestorage.app',
+    apiKey: 'AIzaSyA4EkDi45BKjnS-fn4-BJb1Or09Nc0GqFo',
+    appId: '1:663729522895:ios:76bb53f7795958adcf8fba',
+    messagingSenderId: '663729522895',
+    projectId: 'portable-health-kit-b1f2f',
+    storageBucket: 'portable-health-kit-b1f2f.firebasestorage.app',
     iosBundleId: 'com.example.portableHealthKit',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCCDutbrNd2Djs5YzWmHPHM9f1N4SsTVQQ',
-    appId: '1:875629801749:ios:fb178a7a0a75f71abdf91c',
-    messagingSenderId: '875629801749',
-    projectId: 'portable-health-kits-f1986',
-    storageBucket: 'portable-health-kits-f1986.firebasestorage.app',
+    apiKey: 'AIzaSyA4EkDi45BKjnS-fn4-BJb1Or09Nc0GqFo',
+    appId: '1:663729522895:ios:76bb53f7795958adcf8fba',
+    messagingSenderId: '663729522895',
+    projectId: 'portable-health-kit-b1f2f',
+    storageBucket: 'portable-health-kit-b1f2f.firebasestorage.app',
     iosBundleId: 'com.example.portableHealthKit',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDm57eIPOxez7FkOKPidKsoiwGm9RmblDU',
-    appId: '1:875629801749:web:5c41f9693a760f7cbdf91c',
-    messagingSenderId: '875629801749',
-    projectId: 'portable-health-kits-f1986',
-    authDomain: 'portable-health-kits-f1986.firebaseapp.com',
-    storageBucket: 'portable-health-kits-f1986.firebasestorage.app',
-    measurementId: 'G-8DPBVW0B7C',
+    apiKey: 'AIzaSyBdXSX9jE3nxwY5Z7ppRRmmAnVfN-9mbXE',
+    appId: '1:663729522895:web:7763a82b2d1ca87acf8fba',
+    messagingSenderId: '663729522895',
+    projectId: 'portable-health-kit-b1f2f',
+    authDomain: 'portable-health-kit-b1f2f.firebaseapp.com',
+    storageBucket: 'portable-health-kit-b1f2f.firebasestorage.app',
+    measurementId: 'G-BHGJR0NHMQ',
   );
+
 }
