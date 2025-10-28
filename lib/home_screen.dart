@@ -167,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Text('Selamat Datang!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                           SizedBox(height: 4),
-                          Text('Aplikasi Bali-Sehat siap membantu Anda.', style: TextStyle(fontSize: 14, color: Colors.white70)),
+                          Text('Aplikasi 1PK1H siap membantu Anda.', style: TextStyle(fontSize: 14, color: Colors.white70)),
                         ],
                       ),
                     ),

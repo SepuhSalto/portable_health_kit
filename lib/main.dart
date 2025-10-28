@@ -441,22 +441,27 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Color primaryColor = Theme.of(context).primaryColor;
     return Scaffold(
-      backgroundColor: Theme.of(context).primaryColor, // Use theme color
+      backgroundColor: Colors.white, // Use theme color
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.favorite, color: Colors.white, size: 80), // App icon
+            Image.asset(
+              'assets/images/logo.jpg', // Assumes your logo is named 'logo.png'
+              width: 120, // You can adjust this size
+              height: 120,
+            ),
             const SizedBox(height: 20),
-            const Text( // App name
-              'Bali-Sehat',
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+            Text( // App name
+              'Portable Health Kit',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: primaryColor),
             ),
              const SizedBox(height: 30), // Increased spacing
-             const CircularProgressIndicator(color: Colors.white), // Loading indicator
+             CircularProgressIndicator(color: primaryColor), // Loading indicator
              const SizedBox(height: 10),
-             Text('Memuat...', style: TextStyle(color: Colors.white70)), // Loading text
+             Text('Memuat...', style: TextStyle(color: Colors.grey[600])), // Loading text
           ],
         ),
       ),
