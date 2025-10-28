@@ -7,7 +7,7 @@ import 'package:portable_health_kit/blood_sugar_input_screen.dart'; // BS input 
 import 'package:portable_health_kit/uric_acid_input_screen.dart'; // Uric acid input screen
 import 'package:portable_health_kit/cholesterol_input_screen.dart'; // Cholesterol input screen
 import 'package:portable_health_kit/waist_circumference_input_screen.dart'; // Waist input screen
-
+import 'package:portable_health_kit/services/firestore_service.dart';
 
 class HealthCheckScreen extends StatelessWidget {
   const HealthCheckScreen({super.key});
@@ -17,35 +17,34 @@ class HealthCheckScreen extends StatelessWidget {
   ///
   /// Takes the build context, the action type, and a builder function
   /// that creates the target input screen widget.
-  Future<void> _selectPatientAndNavigate(BuildContext context, PatientAction action, { required Widget Function(String patientId, String patientName) screenBuilder }) async {
+  Future<void> _selectPatientAndNavigate(BuildContext context, PatientAction action, { required Widget Function(String patientId, String patientName, String patientGender) screenBuilder }) async {
 
     print("HealthCheckScreen: Initiating patient selection for action: $action");
-    // Navigate to the PatientSelectionScreen and wait for a result.
+    final FirestoreService firestoreService = FirestoreService(); // Instance for fetching gender
+
+    print("HealthCheckScreen: Initiating patient selection for action: $action");
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        // Pass the action to the selection screen (might be used for title or filtering later)
-        builder: (context) => PatientSelectionScreen(action: action),
-      ),
+      MaterialPageRoute(builder: (context) => PatientSelectionScreen(action: action)),
     );
 
-    // Check if a patient was selected (result is not null and is a Map)
-    // Also check if the current widget is still mounted after the await.
     if (result != null && result is Map<String, dynamic> && context.mounted) {
-      // Extract patient ID and name from the result map.
       final String patientId = result['id'];
       final String patientName = result['name'];
-      print("HealthCheckScreen: Patient selected - ID: $patientId, Name: $patientName. Navigating to input screen.");
+      print("HealthCheckScreen: Patient selected - ID: $patientId, Name: $patientName. Fetching gender...");
 
-      // Navigate to the specific input screen using the provided builder function.
+      // Fetch patient data to get gender
+      final patientData = await firestoreService.getPatientData(patientId);
+      final String patientGender = patientData?['Gender'] as String? ?? "Laki-laki"; // Default if not found
+      print("HealthCheckScreen: Gender fetched: $patientGender. Navigating to input screen.");
+
+
+      // Navigate to the specific input screen, passing gender
       Navigator.push(context, MaterialPageRoute(
-          builder: (context) => screenBuilder(patientId, patientName)
+          builder: (context) => screenBuilder(patientId, patientName, patientGender) // Pass gender
       ));
-    } else if (result == null && context.mounted) {
-      // Log if the selection was cancelled or failed.
-       print("HealthCheckScreen: Patient selection cancelled or returned null.");
-    } else if (!context.mounted) {
-        print("HealthCheckScreen: Context became unmounted after patient selection.");
+    } else {
+       print("HealthCheckScreen: Patient selection cancelled or failed.");
     }
   }
 
@@ -80,78 +79,58 @@ class HealthCheckScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20), // Spacing between buttons
 
-                // --- Button for Blood Pressure Input ---
                 _buildMenuButton(
-                  context,
-                  icon: Icons.monitor_heart_outlined,
-                  label: 'Input Tekanan Darah',
+                  context, icon: Icons.monitor_heart_outlined, label: 'Input Tekanan Darah',
                   onPressed: () {
-                    // Use helper to select patient then navigate
-                    _selectPatientAndNavigate(
-                        context,
-                        PatientAction.inputBloodPressure, // Specific action
-                        // Provide the builder for the target screen
-                        screenBuilder: (id, name) => BloodPressureInputScreen(patientId: id, patientName: name)
+                    _selectPatientAndNavigate( context, PatientAction.inputBloodPressure,
+                        // Pass a default/placeholder gender as BP doesn't use it
+                        screenBuilder: (id, name, gender) => BloodPressureInputScreen(patientId: id, patientName: name)
                     );
                   },
                 ),
                 const SizedBox(height: 20),
 
-                // --- Button for Blood Sugar Input ---
+                // BS Button (Pass placeholder gender - not needed)
                 _buildMenuButton(
-                  context,
-                  icon: Icons.bloodtype_outlined,
-                  label: 'Input Gula Darah',
+                   context, icon: Icons.bloodtype_outlined, label: 'Input Gula Darah',
                   onPressed: () {
-                     _selectPatientAndNavigate(
-                         context,
-                         PatientAction.inputBloodSugar, // Specific action
-                         screenBuilder: (id, name) => BloodSugarInputScreen(patientId: id, patientName: name)
+                     _selectPatientAndNavigate( context, PatientAction.inputBloodSugar,
+                         screenBuilder: (id, name, gender) => BloodSugarInputScreen(patientId: id, patientName: name)
                     );
                   },
                 ),
                 const SizedBox(height: 20),
 
-                // --- Button for Uric Acid Input ---
+                // UA Button (Pass gender)
                 _buildMenuButton(
-                  context,
-                  icon: Icons.science_outlined, // Icon representing lab/uric acid
-                  label: 'Input Asam Urat',
+                  context, icon: Icons.science_outlined, label: 'Input Asam Urat',
                   onPressed: () {
-                    _selectPatientAndNavigate(
-                        context,
-                        PatientAction.inputUricAcid, // Use specific action
-                        screenBuilder: (id, name) => UricAcidInputScreen(patientId: id, patientName: name)
+                    _selectPatientAndNavigate( context, PatientAction.inputUricAcid,
+                        // Pass the fetched gender
+                        screenBuilder: (id, name, gender) => UricAcidInputScreen(patientId: id, patientName: name, patientGender: gender)
                     );
                   },
                 ),
                 const SizedBox(height: 20),
 
-                // --- Button for Cholesterol Input ---
+                // Cholesterol Button (Pass placeholder gender - not needed)
                 _buildMenuButton(
-                  context,
-                  icon: Icons.opacity_outlined, // Icon representing cholesterol/lipids
-                  label: 'Input Kolesterol',
+                  context, icon: Icons.opacity_outlined, label: 'Input Kolesterol',
                   onPressed: () {
-                     _selectPatientAndNavigate(
-                        context,
-                         PatientAction.inputCholesterol, // Use specific action
-                        screenBuilder: (id, name) => CholesterolInputScreen(patientId: id, patientName: name)
+                     _selectPatientAndNavigate( context, PatientAction.inputCholesterol,
+                        screenBuilder: (id, name, gender) => CholesterolInputScreen(patientId: id, patientName: name)
                     );
                   },
                 ),
                 const SizedBox(height: 20),
 
-                // --- Button for Waist Circumference Input ---
+                // Waist Button (Pass gender)
                 _buildMenuButton(
-                  context,
-                  icon: Icons.square_foot_outlined, // Icon representing measurement/waist
-                  label: 'Input Lingkar Perut',
+                  context, icon: Icons.square_foot_outlined, label: 'Input Lingkar Perut',
                   onPressed: () {
-                     _selectPatientAndNavigate(
-                        context,
-                         PatientAction.inputWaist, // Use specific action
-                        screenBuilder: (id, name) => WaistCircumferenceInputScreen(patientId: id, patientName: name)
+                     _selectPatientAndNavigate( context, PatientAction.inputWaist,
+                        // Pass the fetched gender
+                        screenBuilder: (id, name, gender) => WaistCircumferenceInputScreen(patientId: id, patientName: name, patientGender: gender)
                     );
                   },
                 ),
