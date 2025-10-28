@@ -11,6 +11,11 @@ import 'firebase_options.dart'; // Firebase config (keep if needed) // Initial s
 import 'alarm_ring_screen.dart'; // Screen shown when alarm rings
 import 'main_navigation_screen.dart'; // Main app navigation hub
 import 'services/user_session_service.dart'; // For setting the default user ID// For formatting in _updateNextAlarmNotification
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:portable_health_kit/alarm_ring_screen.dart';
+import 'package:portable_health_kit/main_navigation_screen.dart';
+import 'package:portable_health_kit/services/user_session_service.dart';
+import 'package:portable_health_kit/services/notification_service.dart';
 
 // Global navigator key allows navigation from logic outside the widget tree (like the alarm listener)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -28,6 +33,17 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
      print("Main: Firebase Initialized");
+     // --- ADD THIS BLOCK TO SIGN IN ---
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      // Not signed in yet, so sign in anonymously
+      await FirebaseAuth.instance.signInAnonymously();
+      print("Main: New sign-in successful.");
+    } else {
+      // Already signed in
+      print("Main: Already signed in with User ID: ${user.uid}");
+    }
+    // --- END OF NEW BLOCK ---
   } catch (e) {
      print("Main: Firebase Initialization Error: $e");
      // Decide how to handle Firebase init failure if it's critical
@@ -76,7 +92,7 @@ Future<void> main() async {
 
   // --- Setup Alarm Listener ---
   // Start listening for alarms ringing in the background or foreground
-  _setupAlarmListener();
+  //_setupAlarmListener();
 
   // --- Run the App ---
   runApp(const MyApp());
@@ -415,28 +431,54 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  StreamSubscription<AlarmSet>? _alarmSubscription;
+
   @override
   void initState() {
     super.initState();
+    // Listen for an alarm that might be ringing *right now*
+    _alarmSubscription = Alarm.ringing.listen(_handleAlarmRing);
     // Simulate login and navigate after a delay
     _logInHealthWorkerAndNavigate();
   }
 
+  void _handleAlarmRing(AlarmSet alarmSet) {
+    if (alarmSet.alarms.isEmpty) {
+      print("SplashScreen: Received empty alarm set, ignoring.");
+      return;
+    }
+    _alarmSubscription?.cancel();
+    if (mounted) {
+      print("SplashScreen: Alarm is ringing. Navigating to AlarmRingScreen.");
+      Navigator.of(context).pushReplacement( // Use pushReplacement
+        MaterialPageRoute(
+          builder: (_) => AlarmRingScreen(alarmSettings: alarmSet.alarms.first),
+        ),
+      );
+    }
+  }
+
   Future<void> _logInHealthWorkerAndNavigate() async {
-    // Set a default/hardcoded user ID for the kiosk session
     UserSessionService().setCurrentUserId("clinic_bali_sehat_kiosk_01");
     print("SplashScreen: Kiosk User ID set.");
 
     // Wait for splash screen duration
     await Future.delayed(const Duration(seconds: 3));
 
-    // Navigate to the main app screen if the widget is still mounted
-    if (mounted) {
-       print("SplashScreen: Navigating to MainNavigationScreen.");
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
-      );
+    // This code will only run if _handleAlarmRing did *not* fire
+    if (mounted && _alarmSubscription != null) { 
+       _alarmSubscription?.cancel(); // Stop listening
+       print("SplashScreen: No alarm. Navigating to MainNavigationScreen.");
+       Navigator.of(context).pushReplacement(
+         MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
+       );
     }
+  }
+
+  @override
+  void dispose() {
+    _alarmSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -450,8 +492,8 @@ class _SplashScreenState extends State<SplashScreen> {
           children: [
             Image.asset(
               'assets/images/logo.jpg', // Assumes your logo is named 'logo.png'
-              width: 120, // You can adjust this size
-              height: 120,
+              width: 300, // You can adjust this size
+              height: 300,
             ),
             const SizedBox(height: 20),
             Text( // App name

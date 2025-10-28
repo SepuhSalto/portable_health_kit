@@ -127,7 +127,7 @@ class _WaistCircumferenceInputScreenState extends State<WaistCircumferenceInputS
       if (soundToPlay != null) {
           await _playSound(soundToPlay);
           // Wait a bit before closing
-          await Future.delayed(const Duration(seconds: 2));
+          await Future.delayed(const Duration(seconds: 6));
       } else {
           // Shorter delay if no sound
           await Future.delayed(const Duration(milliseconds: 500));

@@ -132,7 +132,7 @@ class _UricAcidInputScreenState extends State<UricAcidInputScreen> {
           await _playSound(soundToPlay);
           // *** ADD DELAY: Wait for sound to play for a bit before popping ***
           // Adjust duration as needed (e.g., 2 seconds)
-          await Future.delayed(const Duration(seconds: 2));
+          await Future.delayed(const Duration(seconds: 6));
       } else {
           // If no sound needs to play, add a shorter delay before popping
           await Future.delayed(const Duration(milliseconds: 500));

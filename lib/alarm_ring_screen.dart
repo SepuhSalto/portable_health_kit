@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart';
 import 'package:portable_health_kit/services/alarm_store.dart'; // Import Hive store // Import Hive model
 import 'package:portable_health_kit/services/notification_service.dart'; // To cancel notification
+import 'package:portable_health_kit/main_navigation_screen.dart';
 
 class AlarmRingScreen extends StatefulWidget {
   final AlarmSettings alarmSettings;
@@ -70,8 +71,10 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
 
     // 8. Close the ringing screen
     if (mounted) {
-        Navigator.of(context).pop();
-    }
+      Navigator.of(context).pushReplacement( // Use pushReplacement
+        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
+      );
+  }
   }
 
   // Optional: Snooze functionality

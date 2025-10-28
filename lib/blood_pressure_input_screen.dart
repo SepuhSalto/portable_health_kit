@@ -135,7 +135,7 @@ class _BloodPressureInputScreenState extends State<BloodPressureInputScreen> {
       if (soundToPlay != null) {
           await _playSound(soundToPlay);
           // *** ADD DELAY: Wait a bit for the sound to play before closing screen ***
-          await Future.delayed(const Duration(seconds: 2)); // Adjust duration if needed
+          await Future.delayed(const Duration(seconds: 6)); // Adjust duration if needed
       } else {
           // If no sound, still wait briefly before closing
           await Future.delayed(const Duration(milliseconds: 500));
