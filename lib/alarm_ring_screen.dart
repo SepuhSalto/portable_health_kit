@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart';
-import 'package:portable_health_kit/services/alarm_store.dart'; // Import Hive store // Import Hive model
-import 'package:portable_health_kit/services/notification_service.dart'; // To cancel notification
+// Note: We no longer import audioplayers
+import 'package:portable_health_kit/services/alarm_store.dart'; 
+import 'package:portable_health_kit/services/notification_service.dart'; 
 import 'package:portable_health_kit/main_navigation_screen.dart';
 
 class AlarmRingScreen extends StatefulWidget {
   final AlarmSettings alarmSettings;
+
+  // This flag prevents the ring screen from opening multiple times
+  static bool isRinging = false;
 
   const AlarmRingScreen({super.key, required this.alarmSettings});
 
@@ -14,8 +18,36 @@ class AlarmRingScreen extends StatefulWidget {
 }
 
 class _AlarmRingScreenState extends State<AlarmRingScreen> {
-  bool _isStopping = false; // Prevent double taps
+  bool _isStopping = false; 
   final NotificationService notificationService = NotificationService();
+  
+  // No AudioPlayer needed
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // This logic now runs only ONCE when the first ring screen is created
+    if (!AlarmRingScreen.isRinging) {
+      AlarmRingScreen.isRinging = true;
+      print("AlarmRingScreen: isRinging set to true. Restarting native sound.");
+      
+      // This re-sets the alarm to *now*. It restarts the native sound 
+      // that was stopped by Alarm.init() when the app was killed.
+      final settings = widget.alarmSettings.copyWith(
+        dateTime: DateTime.now().subtract(const Duration(seconds: 1)),
+      );
+      Alarm.set(alarmSettings: settings);
+    }
+  }
+
+  @override
+  void dispose() {
+    // When the screen closes, reset the flag
+    AlarmRingScreen.isRinging = false;
+    print("AlarmRingScreen: isRinging set to false.");
+    super.dispose();
+  }
 
   // Helper to calculate next day's trigger time
   DateTime _calculateNextDay(TimeOfDay time) {
@@ -30,88 +62,60 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
   Future<void> _stopAndReschedule() async {
     if (_isStopping) return;
     setState(() { _isStopping = true; });
-    print("RingScreen: Stop button pressed for ID=${widget.alarmSettings.id}");
+    
+    // No manual audio to stop. Just stop the native alarm.
+    await Alarm.stop(widget.alarmSettings.id);
+    print("RingScreen: Alarm.stop(${widget.alarmSettings.id}) called.");
+ 
+    await notificationService.cancelRingingNotification(widget.alarmSettings.id);
 
-    final id = widget.alarmSettings.id;
-
-    // 1. Stop the current alarm sound/vibration
-    await Alarm.stop(id);
-    print("RingScreen: Alarm.stop($id) called.");
-
-     // 2. Cancel the full-screen notification
-    await notificationService.cancelRingingNotification(id);
-
-    // 3. Load repeat flag from Hive
-    final alarmData = AlarmStore.getAlarmById(id);
+    final alarmData = AlarmStore.getAlarmById(widget.alarmSettings.id);
     final bool shouldRepeat = alarmData?.repeatEveryday ?? false;
-    print("RingScreen: Repeat flag from Hive: $shouldRepeat");
 
     if (shouldRepeat) {
-      // 4. Calculate next trigger time
       final time = TimeOfDay(hour: widget.alarmSettings.dateTime.hour, minute: widget.alarmSettings.dateTime.minute);
       final nextTrigger = _calculateNextDay(time);
-
-      // 5. Create new settings for rescheduling
       final nextSettings = widget.alarmSettings.copyWith(dateTime: nextTrigger);
-
-      // 6. Reschedule using Alarm.set()
-      final success = await Alarm.set(alarmSettings: nextSettings);
-      print("RingScreen: Rescheduled ID=$id for $nextTrigger. Success: $success");
-
-       // 7. Ensure enabled flag is set in Hive (might have been missed if app was killed)
+      await Alarm.set(alarmSettings: nextSettings);
+      
        if (alarmData != null && !alarmData.enabled) {
-          await AlarmStore.setEnabled(id, true);
+          await AlarmStore.setEnabled(widget.alarmSettings.id, true);
        }
-
     } else {
-        // If not repeating, just ensure it's marked as disabled in Hive
-        print("RingScreen: Alarm ID=$id is not set to repeat. Marking as disabled.");
-        await AlarmStore.setEnabled(id, false);
+        await AlarmStore.setEnabled(widget.alarmSettings.id, false);
     }
 
-    // 8. Close the ringing screen
     if (mounted) {
-      Navigator.of(context).pushReplacement( // Use pushReplacement
+      Navigator.of(context).pushReplacement( 
         MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
       );
-  }
-  }
-
-  // Optional: Snooze functionality
-  Future<void> _snooze() async {
-    if (_isStopping) return;
-    setState(() { _isStopping = true; }); // Prevent double taps
-     print("RingScreen: Snooze button pressed for ID=${widget.alarmSettings.id}");
-
-    final id = widget.alarmSettings.id;
-    final snoozeDuration = const Duration(minutes: 5); // Example: 5 minutes snooze
-    final snoozeTime = DateTime.now().add(snoozeDuration);
-
-     // 1. Stop the current alarm sound/vibration
-    await Alarm.stop(id);
-     print("RingScreen: Alarm.stop($id) called for snooze.");
-
-     // 2. Cancel the full-screen notification
-    await notificationService.cancelRingingNotification(id);
-
-
-    // 3. Create snooze settings (use original settings but new time)
-    final snoozeSettings = widget.alarmSettings.copyWith(dateTime: snoozeTime);
-
-    // 4. Schedule the snooze alarm
-    final success = await Alarm.set(alarmSettings: snoozeSettings);
-     print("RingScreen: Snooze scheduled for ID=$id at $snoozeTime. Success: $success");
-
-    // 5. Close the ringing screen
-    if (mounted) {
-        Navigator.of(context).pop();
     }
   }
 
+  Future<void> _snooze() async {
+    if (_isStopping) return;
+    setState(() { _isStopping = true; }); 
+     
+    // No manual audio to stop. Just stop the native alarm.
+    await Alarm.stop(widget.alarmSettings.id);
+    await notificationService.cancelRingingNotification(widget.alarmSettings.id);
+
+    final snoozeTime = DateTime.now().add(const Duration(minutes: 5));
+    final snoozeSettings = widget.alarmSettings.copyWith(dateTime: snoozeTime);
+    await Alarm.set(alarmSettings: snoozeSettings);
+
+    if (mounted) {
+        Navigator.of(context).pushReplacement( 
+          MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final time = TimeOfDay.fromDateTime(widget.alarmSettings.dateTime).format(context);
+    // This part is unchanged
+    final timeOfDay = TimeOfDay.fromDateTime(widget.alarmSettings.dateTime);
+    final time = '${timeOfDay.hour.toString().padLeft(2, '0')}:${timeOfDay.minute.toString().padLeft(2, '0')}';
     final title = widget.alarmSettings.notificationSettings.title ?? 'Alarm';
 
     return Scaffold(
@@ -129,15 +133,14 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
                   Text(time, style: const TextStyle(fontSize: 52, fontWeight: FontWeight.w700)),
                    const SizedBox(height: 8),
                    Text(widget.alarmSettings.notificationSettings.body ?? 'Alarm sedang berbunyi...', textAlign: TextAlign.center),
-
                 ],
               ),
-              const Text('⏰', style: TextStyle(fontSize: 72)), // Alarm clock emoji
+              const Text('⏰', style: TextStyle(fontSize: 72)),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton(
-                    onPressed: _isStopping ? null : _snooze, // Add Snooze action
+                    onPressed: _isStopping ? null : _snooze,
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.amber[700]),
                     child: const Text('Tunda (5 Mnt)'),
                   ),

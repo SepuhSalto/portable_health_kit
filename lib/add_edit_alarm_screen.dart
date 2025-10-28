@@ -250,7 +250,10 @@ class _AddEditAlarmScreenState extends State<AddEditAlarmScreen> {
               // Use theme card color
               child: ListTile(
                 leading: const Icon(Icons.access_time),
-                title: Text(_selectedTime.format(context), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                title: Text(
+                  '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
+                ),
                 trailing: const Icon(Icons.arrow_drop_down), // Indicate tappable
                 onTap: () => _selectTime(context), // Open time picker on tap
               ),

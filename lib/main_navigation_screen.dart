@@ -52,16 +52,25 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void _setupAlarmListener() {
     _alarmSubscription = Alarm.ringing.listen((alarmSet) {
       if (alarmSet.alarms.isEmpty) return;
+      
+      // --- ADD THIS CHECK ---
+      // If the ring screen is already opening/open, don't open another one.
+      if (AlarmRingScreen.isRinging) {
+        print("MainNavigation: Ring event received, but screen is already ringing. Ignoring.");
+        return;
+      }
+      // --- END OF CHECK ---
+
       print("MainNavigationScreen: Alarm Ring Stream Received!");
-
+      
       final alarm = alarmSet.alarms.first;
-
+      
       // Show the notification (for background)
       notificationService.showFullScreenAlarmNotification(
           alarm.id,
           alarm.notificationSettings.title,
           alarm.notificationSettings.body);
-
+      
       // Push the ring screen (for foreground)
       if (mounted) {
         Navigator.push(

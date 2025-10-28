@@ -447,10 +447,18 @@ class _SplashScreenState extends State<SplashScreen> {
       print("SplashScreen: Received empty alarm set, ignoring.");
       return;
     }
+
+    // --- ADD THIS CHECK ---
+    if (AlarmRingScreen.isRinging) {
+      print("SplashScreen: Ring event received, but screen is already ringing. Ignoring.");
+      return;
+    }
+    // --- END OF CHECK ---
+
     _alarmSubscription?.cancel();
     if (mounted) {
       print("SplashScreen: Alarm is ringing. Navigating to AlarmRingScreen.");
-      Navigator.of(context).pushReplacement( // Use pushReplacement
+      Navigator.of(context).pushReplacement( 
         MaterialPageRoute(
           builder: (_) => AlarmRingScreen(alarmSettings: alarmSet.alarms.first),
         ),
