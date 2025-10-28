@@ -3,7 +3,7 @@ import 'home_screen.dart'; // The new dashboard screen
 import 'health_check_screen.dart'; // The menu to input data
 import 'history_screen.dart'; // The history screen
 import 'alarm_screen.dart'; // The new alarm screen
-import 'tips_screen.dart'; // A placeholder for the tips screen
+import 'materi_screen.dart'; // The materi screen
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -28,7 +28,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       HealthCheckScreen(),
       HistoryScreen(),
       AlarmScreen(),
-      TipsScreen(),
+      MateriScreen(),
     ];
   }
 
@@ -65,7 +65,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.lightbulb_outline),
-            label: 'Tips',
+            label: 'Materi',
           ),
         ],
         currentIndex: _selectedIndex,
