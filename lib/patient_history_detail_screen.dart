@@ -51,7 +51,48 @@ class _PatientHistoryDetailScreenState
     // Fetch patient data when the screen initializes
     _patientDataFuture = _firestoreService.getPatientData(widget.patientId);
   }
+  // --- NEW: Delete Reading Function ---
+  // This will be called from the individual history items
+  Future<void> _deleteReading(String readingId) async {
+    // Show a simple confirmation dialog
+    final bool? didConfirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Hapus Catatan'),
+          content: const Text('Anda yakin ingin menghapus catatan riwayat ini?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
+    );
 
+    if (didConfirm == true) {
+      try {
+        await _firestoreService.deleteHealthReading(widget.patientId, readingId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Catatan berhasil dihapus.'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menghapus catatan: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
 
   // --- Category Helper Functions ---
   // (Includes _getBloodPressureCategory, _getBloodPressureColor, etc...)
@@ -469,22 +510,93 @@ class _PatientHistoryDetailScreenState
     );
   }
 
-  // --- History List Building Widgets (Unchanged) ---
   Widget _buildHistorySection(BuildContext context, {required String title, required List<DocumentSnapshot> readings, required String type, required String gender}) {
      return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600)), const SizedBox(height: 12),
         if (readings.isEmpty) const Card(elevation: 1, child: Padding(padding: EdgeInsets.all(16.0), child: Center(child: Text('Tidak ada data.', style: TextStyle(color: Colors.grey)))))
         else ListView.builder( shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: readings.length,
             itemBuilder: (context, index) {
-              final readingData = readings[index].data() as Map<String, dynamic>?; final timestamp = (readingData?['Timestamp'] as Timestamp?)?.toDate(); final dateStr = timestamp != null ? DateFormat('EEE, d MMM yyyy, HH:mm', 'id_ID').format(timestamp) : 'Tanggal tidak diketahui';
+              // --- ADDED ---
+              final readingDoc = readings[index];
+              final readingId = readingDoc.id; // Get the document ID
+              // ---
+              
+              final readingData = readingDoc.data() as Map<String, dynamic>?;
+              final timestamp = (readingData?['Timestamp'] as Timestamp?)?.toDate(); 
+              final dateStr = timestamp != null ? DateFormat('EEE, d MMM yyyy, HH:mm', 'id_ID').format(timestamp) : 'Tanggal tidak diketahui';
+              
               if (readingData == null) { return Card(child: ListTile(title: Text('Data tidak valid [$index]'))); }
+              
               switch (type) {
-                case 'BP': final int systolic = (readingData['SystolicValue'] as num?)?.toInt() ?? 0; final int diastolic = (readingData['DiastolicValue'] as num?)?.toInt() ?? 0; final status = _getBloodPressureCategory(systolic, diastolic); final color = _getBloodPressureColor(status); return _buildHistoryItem( date: dateStr, icon: Icons.monitor_heart_outlined, iconColor: Colors.red.shade400, valueText: 'TD: $systolic / $diastolic mmHg', statusText: status, statusColor: color,);
-                case 'BS': final int value = (readingData['BloodSugarValue'] as num?)?.toInt() ?? 0; final status = _getBloodSugarCategory(value); final color = _getBloodSugarColor(status); return _buildHistoryItem( date: dateStr, icon: Icons.bloodtype_outlined, iconColor: Colors.orange.shade700, valueText: 'Gula Darah: $value mg/dL', statusText: status, statusColor: color,);
-                case 'UA': final double value = (readingData['UricAcidValue'] as num?)?.toDouble() ?? 0.0; final status = _getUricAcidCategory(value, gender); final color = _getUricAcidColor(status); return _buildHistoryItem( date: dateStr, icon: Icons.science_outlined, iconColor: Colors.purple.shade400, valueText: 'Asam Urat: ${value.toStringAsFixed(1)} mg/dL', statusText: status, statusColor: color,);
-                case 'CHOL': final int value = (readingData['CholesterolValue'] as num?)?.toInt() ?? 0; final status = _getCholesterolCategory(value); final color = _getCholesterolColor(status); return _buildHistoryItem( date: dateStr, icon: Icons.opacity_outlined, iconColor: Colors.blueGrey.shade400, valueText: 'Kolesterol: $value mg/dL', statusText: status, statusColor: color,);
-                case 'WAIST': final double value = (readingData['WaistCircumferenceValue'] as num?)?.toDouble() ?? 0.0; final status = _getWaistCategory(value, gender); final color = _getWaistColor(status); return _buildHistoryItem( date: dateStr, icon: Icons.square_foot_outlined, iconColor: Colors.teal.shade400, valueText: 'L. Perut: ${value.toStringAsFixed(1)} cm', statusText: status, statusColor: color,);
-                default: return const SizedBox.shrink();
+                case 'BP': 
+                  final int systolic = (readingData['SystolicValue'] as num?)?.toInt() ?? 0; 
+                  final int diastolic = (readingData['DiastolicValue'] as num?)?.toInt() ?? 0; 
+                  final status = _getBloodPressureCategory(systolic, diastolic); 
+                  final color = _getBloodPressureColor(status); 
+                  return _buildHistoryItem( 
+                    readingId: readingId, // <-- PASS ID
+                    date: dateStr, 
+                    icon: Icons.monitor_heart_outlined, 
+                    iconColor: Colors.red.shade400, 
+                    valueText: 'TD: $systolic / $diastolic mmHg', 
+                    statusText: status, 
+                    statusColor: color,
+                  );
+                case 'BS': 
+                  final int value = (readingData['BloodSugarValue'] as num?)?.toInt() ?? 0; 
+                  final status = _getBloodSugarCategory(value); 
+                  final color = _getBloodSugarColor(status); 
+                  return _buildHistoryItem( 
+                    readingId: readingId, // <-- PASS ID
+                    date: dateStr, 
+                    icon: Icons.bloodtype_outlined, 
+                    iconColor: Colors.orange.shade700, 
+                    valueText: 'Gula Darah: $value mg/dL', 
+                    statusText: status, 
+                    statusColor: color,
+                  );
+                // ... (Repeat for UA, CHOL, WAIST)
+                case 'UA': 
+                  final double value = (readingData['UricAcidValue'] as num?)?.toDouble() ?? 0.0; 
+                  final status = _getUricAcidCategory(value, gender); 
+                  final color = _getUricAcidColor(status); 
+                  return _buildHistoryItem( 
+                    readingId: readingId, // <-- PASS ID
+                    date: dateStr, 
+                    icon: Icons.science_outlined, 
+                    iconColor: Colors.purple.shade400, 
+                    valueText: 'Asam Urat: ${value.toStringAsFixed(1)} mg/dL', 
+                    statusText: status, 
+                    statusColor: color,
+                  );
+                case 'CHOL': 
+                  final int value = (readingData['CholesterolValue'] as num?)?.toInt() ?? 0; 
+                  final status = _getCholesterolCategory(value); 
+                  final color = _getCholesterolColor(status); 
+                  return _buildHistoryItem( 
+                    readingId: readingId, // <-- PASS ID
+                    date: dateStr, 
+                    icon: Icons.opacity_outlined, 
+                    iconColor: Colors.blueGrey.shade400, 
+                    valueText: 'Kolesterol: $value mg/dL', 
+                    statusText: status, 
+                    statusColor: color,
+                  );
+                case 'WAIST': 
+                  final double value = (readingData['WaistCircumferenceValue'] as num?)?.toDouble() ?? 0.0; 
+                  final status = _getWaistCategory(value, gender); 
+                  final color = _getWaistColor(status); 
+                  return _buildHistoryItem( 
+                    readingId: readingId, // <-- PASS ID
+                    date: dateStr, 
+                    icon: Icons.square_foot_outlined, 
+                    iconColor: Colors.teal.shade400, 
+                    valueText: 'L. Perut: ${value.toStringAsFixed(1)} cm', 
+                    statusText: status, 
+                    statusColor: color,
+                  );
+                default: 
+                  return const SizedBox.shrink();
               }
             },
           ),
@@ -492,19 +604,64 @@ class _PatientHistoryDetailScreenState
     );
   }
 
-  /// Builds a single history item Card widget. (Unchanged)
-  Widget _buildHistoryItem({required String date, required IconData icon, required Color iconColor, required String valueText, required String statusText, required Color statusColor}) {
-      return Card( elevation: 1.5, margin: const EdgeInsets.only(bottom: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding( padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(date, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: Colors.grey[700])), const Divider(height: 16, thickness: 0.5),
-            Row( children: [ Icon(icon, color: iconColor, size: 28), const SizedBox(width: 16),
-                Expanded(child: Text(valueText, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: 15))),
-                if (statusText != 'N/A') Chip( label: Text( statusText, style: const TextStyle( color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)), backgroundColor: statusColor, padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact, ) else const SizedBox.shrink(),
-              ], ), ],
+  // --- MODIFIED: _buildHistoryItem ---
+  // Added readingId parameter and a delete button
+  Widget _buildHistoryItem({
+    required String readingId, // <-- ADDED
+    required String date, 
+    required IconData icon, 
+    required Color iconColor, 
+    required String valueText, 
+    required String statusText, 
+    required Color statusColor
+  }) {
+      return Card( 
+        elevation: 1.5, 
+        margin: const EdgeInsets.only(bottom: 12), 
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding( 
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          child: Column( 
+            crossAxisAlignment: CrossAxisAlignment.start, 
+            children: [
+              // --- MODIFIED: Added a Row with a delete button ---
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(date, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: Colors.grey[700])),
+                  // Delete Button
+                  InkWell(
+                    onTap: () => _deleteReading(readingId), // <-- ADDED
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Icon(Icons.delete_forever_outlined, color: Colors.red[300], size: 20),
+                    ),
+                  )
+                ],
+              ),
+              // --- END OF MODIFICATION ---
+              const Divider(height: 16, thickness: 0.5),
+              Row( 
+                children: [ 
+                  Icon(icon, color: iconColor, size: 28), 
+                  const SizedBox(width: 16),
+                  Expanded(child: Text(valueText, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: 15))),
+                  if (statusText != 'N/A') 
+                    Chip( 
+                      label: Text( statusText, style: const TextStyle( color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)), 
+                      backgroundColor: statusColor, 
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0), 
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, 
+                      visualDensity: VisualDensity.compact, 
+                    ) 
+                  else 
+                    const SizedBox.shrink(),
+                ], 
+              ), 
+            ],
+          ),
         ),
-      ),
-    );
+      );
    }
 
 

@@ -31,7 +31,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _searchController.dispose();
     super.dispose();
   }
+  // --- NEW: Delete Patient Function with Confirmation ---
+  Future<void> _deletePatient(String patientId, String patientName) async {
+    // Show a confirmation dialog
+    final bool? didConfirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Hapus Pasien'),
+          content: Text('Anda yakin ingin menghapus $patientName dan semua riwayat kesehatannya? Tindakan ini tidak dapat dibatalkan.'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false), // User cancels
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true), // User confirms
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
+    );
 
+    // If the user confirmed, proceed with deletion
+    if (didConfirm == true) {
+      try {
+        await _firestoreService.deletePatient(patientId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$patientName berhasil dihapus.'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menghapus pasien: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -113,7 +154,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                   title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(info),
-                  trailing: const Icon(Icons.chevron_right),
+                  
+                  // --- MODIFIED Trailing to add a delete button ---
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Delete Button
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        tooltip: 'Hapus Pasien',
+                        onPressed: () {
+                          _deletePatient(patient.id, name);
+                        },
+                      ),
+                      // View History Button
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
+                  // --- END OF MODIFICATION ---
+                  
                   onTap: () {
                     // NEW: Navigate to the detail screen
                     Navigator.push(

@@ -33,8 +33,8 @@ class NotificationService {
 
     // Platform-specific initialization settings
     const AndroidInitializationSettings androidInit =
-        // Ensure you have ic_launcher.png (or similar) in android/app/src/main/res/mipmap folders
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        // Ensure you have ic_lock_idle_alarm.png (or similar) in android/app/src/main/res/drawable folders
+        AndroidInitializationSettings('@android:drawable/ic_lock_idle_alarm');
     // Basic iOS settings (iOS features less relevant for this specific Android-focused alarm setup)
     const DarwinInitializationSettings iosInit = DarwinInitializationSettings();
     const InitializationSettings initSettings = InitializationSettings(
@@ -120,7 +120,8 @@ class NotificationService {
      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
        silentChannelId, // Use the dedicated silent channel
        'Alarms Trigger (Silent)', // Match channel name
-       channelDescription: 'Internal channel to trigger alarm screen', // Match channel description
+       channelDescription: 'Internal channel to trigger alarm screen',
+       icon: '@android:drawable/ic_lock_idle_alarm', // Match channel description
        importance: Importance.max,
        priority: Priority.max,
        category: AndroidNotificationCategory.alarm, // Crucial category for alarms
@@ -159,6 +160,7 @@ class NotificationService {
        nextAlarmChannelId, // Use the dedicated 'next alarm' channel
        'Next Alarm Status',
        channelDescription: 'Shows the upcoming alarm in the status bar',
+       icon: '@android:drawable/ic_lock_idle_alarm',
        importance: Importance.low,
        priority: Priority.low,
        autoCancel: false, // Must not auto-cancel

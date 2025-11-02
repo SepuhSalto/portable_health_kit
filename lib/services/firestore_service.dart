@@ -76,7 +76,44 @@ class FirestoreService {
       return null; // Return null on error
     }
   }
+  Future<void> deletePatient(String patientId) async {
+    try {
+      // 1. Get a reference to the patient's document
+      final patientDocRef = _patientsCollection.doc(patientId);
 
+      // 2. Get all documents in the 'healthReadings' subcollection
+      final readingsSnapshot = await patientDocRef.collection('healthReadings').get();
+
+      // 3. Create a batch to delete all readings
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in readingsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      
+      // 4. Commit the batch deletion
+      await batch.commit();
+
+      // 5. After subcollection is deleted, delete the patient document itself
+      await patientDocRef.delete();
+      
+      print("FirestoreService: Successfully deleted patient $patientId and all readings.");
+
+    } catch (e) {
+      print("FirestoreService: Error deleting patient $patientId: $e");
+      // Re-throw the error so the UI can catch it
+      rethrow;
+    }
+  }
+
+
+  // --- NEW: Delete Single Health Reading ---
+  Future<void> deleteHealthReading(String patientId, String readingId) {
+    return _patientsCollection
+        .doc(patientId)
+        .collection('healthReadings')
+        .doc(readingId)
+        .delete();
+  }
   // --- OLD Reading Streams (These are now incorrect) ---
   // We leave them for now, but they will be fixed later.
   Stream<QuerySnapshot> getHealthReadingsStream(String userId) {
